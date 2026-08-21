@@ -1,0 +1,111 @@
+{
+  "name": "GeoAware - Risiko & Peringatan Dini Gempa",
+  "short_name": "GeoAware",
+  "description": "Aplikasi visualisasi risiko gempa dan peringatan dini real-time untuk keamanan Anda dan keluarga",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#0ea5e9",
+  "orientation": "portrait-primary",
+  "scope": "/",
+  "lang": "id",
+  "icons": [
+    {
+      "src": "/icons/icon-72x72.png",
+      "sizes": "72x72",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icons/icon-96x96.png",
+      "sizes": "96x96",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icons/icon-128x128.png",
+      "sizes": "128x128",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icons/icon-144x144.png",
+      "sizes": "144x144",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icons/icon-152x152.png",
+      "sizes": "152x152",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icons/icon-192x192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icons/icon-384x384.png",
+      "sizes": "384x384",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icons/icon-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "categories": ["weather", "safety", "navigation"],
+  "shortcuts": [
+    {
+      "name": "Cek Risiko",
+      "short_name": "Risiko",
+      "description": "Cek risiko gempa di lokasi Anda",
+      "url": "/risk",
+      "icons": [{ "src": "/icons/risk-96x96.png", "sizes": "96x96" }]
+    },
+    {
+      "name": "Peringatan Gempa",
+      "short_name": "Peringatan",
+      "description": "Lihat gempa terbaru dan atur notifikasi",
+      "url": "/alerts",
+      "icons": [{ "src": "/icons/alert-96x96.png", "sizes": "96x96" }]
+    },
+    {
+      "name": "Peta Offline",
+      "short_name": "Offline",
+      "description": "Kelola peta dan rute evakuasi offline",
+      "url": "/offline",
+      "icons": [{ "src": "/icons/offline-96x96.png", "sizes": "96x96" }]
+    }
+  ],
+  "prefer_related_applications": false,
+  "related_applications": [],
+  "screenshots": [
+    {
+      "src": "/screenshots/home.png",
+      "sizes": "1280x720",
+      "type": "image/png",
+      "form_factor": "wide",
+      "label": "Beranda dengan peta interaktif"
+    },
+    {
+      "src": "/screenshots/risk.png",
+      "sizes": "1280x720",
+      "type": "image/png",
+      "form_factor": "wide",
+      "label": "Analisis risiko lokasi"
+    },
+    {
+      "src": "/screenshots/alerts.png",
+      "sizes": "720x1280",
+      "type": "image/png",
+      "form_factor": "narrow",
+      "label": "Peringatan gempa real-time"
+    }
+  ]
+}

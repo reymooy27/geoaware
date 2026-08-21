@@ -1,0 +1,269 @@
+generator client {
+  provider = "prisma-client-js"
+  output      = "../node_modules/@prisma/client"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id            String    @id @default(cuid())
+  email         String    @unique
+  name          String?
+  phone         String?   @unique
+  avatarUrl     String?
+  theme         Theme     @default(SYSTEM)
+  language      Language  @default(ID)
+  units         Units     @default(METRIC)
+  mapStyle      MapStyle  @default(STANDARD)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  
+  riskAssessments   RiskAssessment[]
+  emergencyContacts EmergencyContact[]
+  safeStatuses      SafeStatus[]
+  offlineRegions    OfflineMapRegion[]
+  settings          UserSettings?
+  
+  @@map("users")
+}
+
+model UserSettings {
+  id                    String   @id @default(cuid())
+  userId                String   @unique
+  pushEnabled           Boolean  @default(true)
+  smsEnabled            Boolean  @default(false)
+  whatsappEnabled       Boolean  @default(false)
+  minMagnitude          Float    @default(3.0)
+  alertRadiusKm         Int      @default(100)
+  autoDownloadOffline   Boolean  @default(true)
+  offlineOnWifiOnly     Boolean  @default(true)
+  shareLocationDefault  Boolean  @default(false)
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+  
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@map("user_settings")
+}
+
+model EmergencyContact {
+  id            String   @id @default(cuid())
+  userId        String
+  name          String
+  phone         String
+  relationship  String
+  isPrimary     Boolean  @default(false)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@index([userId])
+  @@map("emergency_contacts")
+}
+
+model FaultLine {
+  id              String   @id @default(cuid())
+  name            String
+  type            FaultType
+  geometry        Bytes    // PostGIS geometry(LineString, 4326)
+  maxMagnitude    Float
+  activityLevel   Int
+  slipRate        Float?
+  lastEvent       DateTime?
+  source          String
+  metadata        Json?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  
+  riskAssessments RiskAssessment[]
+
+  @@index([type])
+  @@index([geometry])
+  @@map("fault_lines")
+}
+
+model SoilType {
+  id                String   @id @default(cuid())
+  name              String
+  code              String   @unique
+  liquefactionRisk  RiskLevel
+  description       String
+  vs30              Float?
+  geometry          Bytes    // PostGIS geometry(Polygon, 4326)
+  source            String
+  metadata          Json?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  
+  riskAssessments RiskAssessment[]
+
+  @@index([geometry])
+  @@map("soil_types")
+}
+
+model RiskAssessment {
+  id                String    @id @default(cuid())
+  userId            String
+  location          Bytes     // PostGIS geometry(Point, 4326)
+  address           String?
+  nearestFaultId    String?
+  nearestFaultDist  Float
+  soilTypeId        String?
+  riskLevel         RiskLevel
+  recommendations   String[]
+  buildingChecklist Json
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  
+  user         User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  nearestFault FaultLine? @relation(fields: [nearestFaultId], references: [id], onDelete: SetNull)
+  soilType     SoilType?  @relation(fields: [soilTypeId], references: [id], onDelete: SetNull)
+  
+  @@index([userId])
+  @@index([location])
+  @@index([riskLevel])
+  @@map("risk_assessments")
+}
+
+model EarthquakeEvent {
+  id          String    @id @default(cuid())
+  externalId  String    @unique
+  magnitude   Float
+  depth       Float
+  location    Bytes     // PostGIS geometry(Point, 4326)
+  place       String
+  time        DateTime
+  source      EventSource
+  felt        Boolean   @default(false)
+  tsunami     Boolean   @default(false)
+  metadata    Json?
+  createdAt   DateTime  @default(now())
+  
+  @@index([time])
+  @@index([magnitude])
+  @@index([source])
+  @@index([location])
+  @@map("earthquake_events")
+}
+
+model SafeStatus {
+  id        String       @id @default(cuid())
+  userId    String
+  location  Bytes        // PostGIS geometry(Point, 4326)
+  status    SafeStatusType
+  message   String?
+  timestamp DateTime     @default(now())
+  
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@index([userId])
+  @@index([timestamp])
+  @@map("safe_statuses")
+}
+
+model EvacuationRoute {
+  id              String   @id @default(cuid())
+  name            String
+  geometry        Bytes    // PostGIS geometry(LineString, 4326)
+  assemblyPoint   Bytes    // PostGIS geometry(Point, 4326)
+  assemblyName    String
+  assemblyCapacity Int
+  distanceKm      Float
+  estimatedTimeMin Int
+  region          String
+  isActive        Boolean  @default(true)
+  metadata        Json?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  
+  @@index([region])
+  @@index([geometry])
+  @@map("evacuation_routes")
+}
+
+model OfflineMapRegion {
+  id          String   @id @default(cuid())
+  userId      String
+  name        String
+  bounds      Bytes    // PostGIS geometry(Polygon, 4326)
+  minZoom     Int
+  maxZoom     Int
+  sizeMB      Float
+  downloadedAt DateTime?
+  expiresAt   DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@index([userId])
+  @@map("offline_map_regions")
+}
+
+model AssemblyPoint {
+  id          String   @id @default(cuid())
+  name        String
+  location    Bytes    // PostGIS geometry(Point, 4326)
+  address     String?
+  capacity    Int
+  facilities  String[]
+  region      String
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  @@index([region])
+  @@index([location])
+  @@map("assembly_points")
+}
+
+enum Theme {
+  LIGHT
+  DARK
+  SYSTEM
+}
+
+enum Language {
+  ID
+  EN
+}
+
+enum Units {
+  METRIC
+  IMPERIAL
+}
+
+enum MapStyle {
+  STANDARD
+  SATELLITE
+  HYBRID
+}
+
+enum FaultType {
+  ACTIVE
+  MEGATHRUST
+  INACTIVE
+}
+
+enum RiskLevel {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum EventSource {
+  BMKG
+  USGS
+  CITIZEN
+}
+
+enum SafeStatusType {
+  SAFE
+  NEED_HELP
+  INJURED
+}
