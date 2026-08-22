@@ -4,39 +4,27 @@ import { MapContainer } from '../components/Map/MapContainer';
 import { useMapStore, useAlertStore, useUserStore } from '../hooks/useStores';
 import { useQuery } from '../hooks/useQuery';
 import { getCurrentLocation } from '../utils/helpers';
-import { cn, formatRelativeTime, getRiskLabel, getRiskColor } from '../utils/helpers';
+import { cn, formatRelativeTime, getRiskColor } from '../utils/helpers';
 import {
-  ShieldCheck, AlertTriangle, MapPin, Navigation, Download, Target, 
-  TrendingUp, Users, Globe, Clock, Map as MapIcon
+  ShieldCheck, AlertTriangle, MapPin, Download, Settings, Target,
+  Globe, Clock, Menu, X, Navigation, ChevronRight, Locate
 } from 'lucide-react';
-
-const features = [
-  { icon: MapPin, title: 'Cek Risiko Sekali Klik', desc: 'Masukkan alamat atau gunakan GPS untuk mengetahui jarak ke patahan aktif, jenis tanah, dan skor risiko gempa.', href: '/risk', color: 'blue' },
-  { icon: AlertTriangle, title: 'Peringatan Real-Time', desc: 'Notifikasi gempa M≥3.0 dari BMKG & USGS dalam hitungan menit. Fitur "Saya Selamat" untuk memberitahu keluarga.', href: '/alerts', color: 'red' },
-  { icon: MapIcon, title: 'Peta Interaktif Vektor', desc: 'Visualisasi jalur patahan aktif, zona megathrust, dan risiko likuifaksi dengan render cepat di semua perangkat.', href: '/', color: 'green' },
-  { icon: Download, title: 'Mode Offline Lengkap', desc: 'Unduh peta patahan & rute evakuasi untuk diakses tanpa internet. Navigasi ke titik kumpul terdekat.', href: '/offline', color: 'orange' },
-];
-
-const stats = [
-  { label: 'Patahan Aktif', value: '300+', icon: Target },
-  { label: 'Gempa Terpantau', value: 'Real-time', icon: TrendingUp },
-  { label: 'Titik Evakuasi', value: '5000+', icon: Navigation },
-  { label: 'Pengguna Aktif', value: '10.000+', icon: Users },
-];
 
 export function HomePage() {
   const { fetchEarthquakes } = useQuery();
-  const { events, addEvent } = useAlertStore();
-  const { location, setLocation } = useUserStore();
+  const { addEvent } = useAlertStore();
+  const { setLocation } = useUserStore();
   const { showFaults, showEarthquakes, toggleLayer } = useMapStore();
   const [recentEarthquakes, setRecentEarthquakes] = useState<any[]>([]);
-  const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [eqExpanded, setEqExpanded] = useState(false);
+  const [userLoc, setUserLoc] = useState<{ lat: number; lng: number } | null>(null);
 
   useEffect(() => {
     loadRecentEarthquakes();
     if (navigator.geolocation) {
       getCurrentLocation().then(pos => {
-        setUserLocation({ lat: pos.latitude, lng: pos.longitude });
+        setUserLoc({ lat: pos.latitude, lng: pos.longitude });
         setLocation({ coordinates: { latitude: pos.latitude, longitude: pos.longitude }, accuracy: pos.accuracy, timestamp: Date.now(), source: 'gps' });
       }).catch(() => {});
     }
@@ -46,167 +34,134 @@ export function HomePage() {
     try {
       const data = await fetchEarthquakes({ minMagnitude: 3.0, limit: 10 });
       setRecentEarthquakes(data);
-      data.forEach(e => addEvent(e));
+      data.forEach((e: any) => addEvent(e));
     } catch (error) {
       console.error('Failed to load earthquakes:', error);
     }
   };
 
+  const handleLocateUser = () => {
+    if (navigator.geolocation) {
+      getCurrentLocation().then(pos => {
+        setUserLoc({ lat: pos.latitude, lng: pos.longitude });
+      }).catch(() => {});
+    }
+  };
+
   return (
-    <div className="min-h-screen">
-      <section className="relative h-[60vh] min-h-[400px] max-h-[600px] w-full">
-        <MapContainer className="h-full w-full" />
-        
-        <div className="absolute top-4 left-4 right-4 z-10 flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
-          <div className="bg-white/90 dark:bg-gray-800/90 backdrop-blur-sm rounded-xl p-4 shadow-lg max-w-md">
-            <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">Peta Risiko Gempa Indonesia</h1>
-            <p className="text-gray-600 dark:text-gray-400 mt-1">Jelajahi jalur patahan aktif, zona megathrust, dan risiko likuifaksi secara interaktif</p>
+    <div className="relative w-full h-[calc(100vh-0rem)] bg-gray-900">
+      {/* Fullscreen map */}
+      <MapContainer className="absolute inset-0" />
+
+      {/* Top bar */}
+      <div className="absolute top-0 left-0 right-0 z-20 flex items-center justify-between p-3">
+        <button
+          onClick={() => setSidebarOpen(!sidebarOpen)}
+          className="flex items-center gap-2 bg-white/90 dark:bg-gray-800/90 backdrop-blur-sm rounded-xl px-3 py-2 shadow-lg hover:bg-white dark:hover:bg-gray-800 transition-colors"
+        >
+          {sidebarOpen ? <X className="w-5 h-5 text-gray-700 dark:text-gray-300" /> : <Menu className="w-5 h-5 text-gray-700 dark:text-gray-300" />}
+          <div className="w-7 h-7 rounded-lg bg-primary-600 flex items-center justify-center">
+            <ShieldCheck className="w-4 h-4 text-white" />
           </div>
-          
-          <div className="flex items-center gap-2 bg-white/90 dark:bg-gray-800/90 backdrop-blur-sm rounded-xl p-2 shadow-lg">
+          <span className="font-bold text-gray-900 dark:text-gray-100 hidden sm:block">GeoAware</span>
+        </button>
+
+        <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1 bg-white/90 dark:bg-gray-800/90 backdrop-blur-sm rounded-xl p-1.5 shadow-lg">
             <button
               onClick={() => toggleLayer('faults')}
-              className={cn('flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors', 
+              className={cn('flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors',
                 showFaults ? 'bg-primary-100 dark:bg-primary-900/30 text-primary-700 dark:text-primary-300' : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
               )}
             >
-              <Target className="w-4 h-4" />
-              Patahan
+              <Target className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">Patahan</span>
             </button>
             <button
               onClick={() => toggleLayer('earthquakes')}
-              className={cn('flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors',
+              className={cn('flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors',
                 showEarthquakes ? 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300' : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
               )}
             >
-              <AlertTriangle className="w-4 h-4" />
-              Gempa
+              <AlertTriangle className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">Gempa</span>
             </button>
           </div>
-        </div>
 
-        {userLocation && (
-          <div className="absolute bottom-4 left-4 z-10 bg-white/90 dark:bg-gray-800/90 backdrop-blur-sm rounded-xl p-3 shadow-lg">
-            <div className="flex items-center gap-2 text-sm">
-              <MapPin className="w-4 h-4 text-primary-600" />
-              <span className="font-medium text-gray-900 dark:text-gray-100">Lokasi Anda</span>
-              <span className="text-gray-500 dark:text-gray-400">
-                {userLocation.lat.toFixed(4)}, {userLocation.lng.toFixed(4)}
-              </span>
+          <button
+            onClick={handleLocateUser}
+            className="bg-white/90 dark:bg-gray-800/90 backdrop-blur-sm rounded-xl p-2 shadow-lg hover:bg-white dark:hover:bg-gray-800 transition-colors"
+            title="Lokasi saya"
+          >
+            <Locate className="w-5 h-5 text-primary-600" />
+          </button>
+        </div>
+      </div>
+
+      {/* Sidebar */}
+      {sidebarOpen && (
+        <div className="absolute inset-y-0 left-0 z-30 w-72 bg-white dark:bg-gray-800 shadow-2xl flex flex-col">
+          <div className="p-4 border-b border-gray-200 dark:border-gray-700">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-primary-600 flex items-center justify-center">
+                <ShieldCheck className="w-6 h-6 text-white" />
+              </div>
+              <div>
+                <h1 className="font-bold text-lg text-gray-900 dark:text-gray-100">GeoAware</h1>
+                <p className="text-xs text-gray-500 dark:text-gray-400">Peta Risiko Gempa Indonesia</p>
+              </div>
             </div>
           </div>
-        )}
-      </section>
+          <nav className="flex-1 p-3 space-y-1">
+            <Link to="/" onClick={() => setSidebarOpen(false)} className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium bg-primary-50 dark:bg-primary-900/30 text-primary-600 dark:text-primary-400"><Target className="w-4 h-4" /> Peta Interaktif</Link>
+            <Link to="/risk" onClick={() => setSidebarOpen(false)} className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"><ShieldCheck className="w-4 h-4" /> Cek Risiko <ChevronRight className="w-3 h-3 ml-auto" /></Link>
+            <Link to="/alerts" onClick={() => setSidebarOpen(false)} className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"><AlertTriangle className="w-4 h-4" /> Peringatan <ChevronRight className="w-3 h-3 ml-auto" /></Link>
+            <Link to="/offline" onClick={() => setSidebarOpen(false)} className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"><Download className="w-4 h-4" /> Mode Offline <ChevronRight className="w-3 h-3 ml-auto" /></Link>
+            <Link to="/settings" onClick={() => setSidebarOpen(false)} className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"><Settings className="w-4 h-4" /> Pengaturan <ChevronRight className="w-3 h-3 ml-auto" /></Link>
+          </nav>
+        </div>
+      )}
 
-      <section className="py-12 px-4 sm:px-6 lg:px-8">
-        <div className="max-w-7xl mx-auto">
-          <div className="text-center mb-12">
-            <h2 className="text-3xl sm:text-4xl font-bold text-gray-900 dark:text-gray-100 mb-4">
-              Fitur Utama GeoAware
-            </h2>
-            <p className="text-lg text-gray-600 dark:text-gray-400 max-w-2xl mx-auto">
-              Semua yang Anda butuhkan untuk siap menghadapi gempa bumi dalam satu aplikasi
-            </p>
+      {/* Bottom-right: earthquake card */}
+      <div className="absolute bottom-4 right-4 z-20 w-72">
+        <div className="bg-white/90 dark:bg-gray-800/90 backdrop-blur-sm rounded-xl shadow-lg overflow-hidden">
+          <div className="flex items-center justify-between px-3 py-2 border-b border-gray-200/50 dark:border-gray-700/50">
+            <div className="flex items-center gap-1.5">
+              <AlertTriangle className="w-3.5 h-3.5 text-red-500" />
+              <span className="text-xs font-semibold text-gray-900 dark:text-gray-100">Gempa Terbaru</span>
+              <span className="text-[10px] bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 px-1.5 py-0.5 rounded-full font-medium">{recentEarthquakes.length}</span>
+            </div>
+            <button onClick={() => setEqExpanded(!eqExpanded)} className="text-[10px] text-primary-600 dark:text-primary-400 font-medium hover:underline">
+              {eqExpanded ? 'Tutup' : 'Lihat semua'}
+            </button>
           </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-16">
-            {features.map((feature, index) => {
-              const Icon = feature.icon;
-              const colorClasses = {
-                blue: 'bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400',
-                red: 'bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400',
-                green: 'bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400',
-                orange: 'bg-orange-100 dark:bg-orange-900/30 text-orange-600 dark:text-orange-400',
-              };
-              return (
-                <Link
-                  key={feature.href}
-                  to={feature.href}
-                  className="card-hover p-6 group"
-                >
-                  <div className={cn('w-12 h-12 rounded-xl flex items-center justify-center mb-4', colorClasses[feature.color as keyof typeof colorClasses])}>
-                    <Icon className="w-6 h-6" aria-hidden="true" />
-                  </div>
-                  <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-2 group-hover:text-primary-600 dark:group-hover:text-primary-400 transition-colors">
-                    {feature.title}
-                  </h3>
-                  <p className="text-gray-600 dark:text-gray-400 text-sm leading-relaxed">{feature.desc}</p>
-                </Link>
-              );
-            })}
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-16">
-            {stats.map((stat, index) => (
-              <div key={stat.label} className="card p-6 text-center">
-                <stat.icon className="w-10 h-10 text-primary-600 dark:text-primary-400 mx-auto mb-3" aria-hidden="true" />
-                <div className="text-3xl font-bold text-gray-900 dark:text-gray-100">{stat.value}</div>
-                <div className="text-sm text-gray-500 dark:text-gray-400 mt-1">{stat.label}</div>
+          <div className={cn('divide-y divide-gray-100/50 dark:divide-gray-700/50 overflow-y-auto transition-all', eqExpanded ? 'max-h-[50vh]' : 'max-h-[180px]')}>
+            {recentEarthquakes.map((eq) => (
+              <div key={eq.id} className="px-3 py-2 hover:bg-gray-50 dark:hover:bg-gray-700/30 transition-colors cursor-pointer">
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-xs font-medium text-gray-900 dark:text-gray-100 truncate flex-1 min-w-0">{eq.place}</p>
+                  <span className={cn('flex-shrink-0 text-[10px] font-bold px-1.5 py-0.5 rounded',
+                    eq.magnitude >= 7 ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400' :
+                    eq.magnitude >= 5 ? 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400' :
+                    'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400'
+                  )}>{eq.magnitude.toFixed(1)}</span>
+                </div>
+                <div className="flex items-center gap-2 mt-0.5 text-[10px] text-gray-500 dark:text-gray-400">
+                  <span>{eq.depth} km</span>
+                  <span>·</span>
+                  <span>{formatRelativeTime(eq.time)}</span>
+                </div>
               </div>
             ))}
-          </div>
-
-          <section className="mb-16">
-            <div className="flex items-center justify-between mb-6">
-              <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100">Gempa Terbaru (M≥3.0)</h2>
-              <Link to="/alerts" className="text-primary-600 dark:text-primary-400 hover:underline text-sm font-medium">
-                Lihat semua →
-              </Link>
-            </div>
-            
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {recentEarthquakes.slice(0, 6).map((eq) => (
-                <div key={eq.id} className="card p-4">
-                  <div className="flex items-start justify-between">
-                    <div>
-                      <p className="font-medium text-gray-900 dark:text-gray-100">{eq.place}</p>
-                      <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">{formatRelativeTime(eq.time)}</p>
-                    </div>
-                    <span className={cn('badge', getRiskColor(eq.magnitude >= 7 ? 'critical' : eq.magnitude >= 5 ? 'high' : 'medium'))}>
-                      {eq.magnitude.toFixed(1)} SR
-                    </span>
-                  </div>
-                  <div className="mt-3 flex items-center gap-4 text-xs text-gray-500 dark:text-gray-400">
-                    <span className="flex items-center gap-1">
-                      <Globe className="w-3 h-3" /> {eq.depth} km
-                    </span>
-                    <span className="flex items-center gap-1">
-                      <Clock className="w-3 h-3" /> {eq.source}
-                    </span>
-                  </div>
-                </div>
-              ))}
-              {recentEarthquakes.length === 0 && (
-                <div className="col-span-full card p-8 text-center">
-                  <AlertTriangle className="w-12 h-12 text-gray-300 dark:text-gray-600 mx-auto mb-3" />
-                  <p className="text-gray-500 dark:text-gray-400">Memuat data gempa terbaru...</p>
-                </div>
-              )}
-            </div>
-          </section>
-
-          <section>
-            <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-6 text-center">
-              Siap Menghadapi Gempa?
-            </h2>
-            <div className="max-w-2xl mx-auto text-center space-y-4">
-              <p className="text-gray-600 dark:text-gray-400 text-lg">
-                Mulai cek risiko rumah Anda, atur peringatan gempa, dan siapkan rute evakuasi darurat.
-              </p>
-              <div className="flex items-center justify-center gap-4">
-                <Link to="/risk" className="btn-primary">
-                  <ShieldCheck className="w-4 h-4" />
-                  Cek Risiko Sekarang
-                </Link>
-                <Link to="/alerts" className="btn-secondary">
-                  <AlertTriangle className="w-4 h-4" />
-                  Atur Peringatan
-                </Link>
+            {recentEarthquakes.length === 0 && (
+              <div className="px-3 py-4 text-center">
+                <Navigation className="w-5 h-5 text-gray-300 dark:text-gray-600 mx-auto mb-1 animate-pulse" />
+                <p className="text-[10px] text-gray-500 dark:text-gray-400">Memuat...</p>
               </div>
-            </div>
-          </section>
+            )}
+          </div>
         </div>
-      </section>
+      </div>
     </div>
   );
 }

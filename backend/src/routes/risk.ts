@@ -37,19 +37,14 @@ riskRoutes.post('/assess', async (req, res, next) => {
     });
 
     if (data.userId) {
-      await prisma.riskAssessment.create({
-        data: {
-          userId: data.userId,
-          location: { type: 'Point', coordinates: [data.longitude, data.latitude] },
-          address: data.address,
-          nearestFaultId: nearestFault.id,
-          nearestFaultDist: assessment.nearestFault.distanceKm,
-          soilTypeId: soilType?.id,
-          riskLevel: assessment.riskScore.toUpperCase() as any,
-          recommendations: assessment.recommendations,
-          buildingChecklist: assessment.buildingChecklist,
-        },
-      });
+      const checklistJson = JSON.stringify(assessment.buildingChecklist).replace(/'/g, "''");
+      const recsArr = assessment.recommendations;
+      await prisma.$executeRawUnsafe(`
+        INSERT INTO risk_assessments
+          ("id", "userId", "location", "address", "nearestFaultId", "nearestFaultDist", "soilTypeId", "riskLevel", "recommendations", "buildingChecklist", "createdAt", "updatedAt")
+        VALUES
+          (gen_random_uuid()::text, $1, ST_SetSRID(ST_MakePoint($2, $3), 4326)::geometry, $4, $5, $6, $7, $8::"RiskLevel", $9, $10::jsonb, NOW(), NOW())
+      `, data.userId, data.longitude, data.latitude, data.address || null, nearestFault.id, assessment.nearestFault.distanceKm, soilType?.id || null, assessment.riskScore.toUpperCase(), recsArr, checklistJson);
     }
 
     res.json(assessment);

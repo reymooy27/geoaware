@@ -31,8 +31,11 @@ export function Layout() {
   const themeIcons = { light: Sun, dark: Moon, system: Monitor };
   const ThemeIcon = themeIcons[theme];
 
+  const isHome = location.pathname === '/';
+
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex flex-col">
+      {!isHome && (
       <header className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 sticky top-0 z-50">
         <nav className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8" aria-label="Main navigation">
           <div className="flex items-center justify-between h-16">
@@ -166,17 +169,20 @@ export function Layout() {
           )}
         </nav>
       </header>
+      )}
 
       <main className="flex-1" role="main">
         <Outlet />
       </main>
 
+      {!isHome && (
       <footer className="bg-white dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700 py-4">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center text-sm text-gray-500 dark:text-gray-400">
           <p>© 2024 GeoAware. Data patahan dari BMKG, Badan Geologi, & OpenStreetMap.</p>
           <p className="mt-1">Aplikasi peringatan dini gempa untuk keamanan Anda dan keluarga.</p>
         </div>
       </footer>
+      )}
     </div>
   );
 }

@@ -37,13 +37,13 @@ faultRoutes.get('/', async (req, res, next) => {
 
     const faults = await prisma.$queryRawUnsafe(`
       SELECT 
-        id, name, type, max_magnitude as "maxMagnitude", 
-        activity_level as "activityLevel", slip_rate as "slipRate",
-        last_event as "lastEvent", source,
-        ST_AsGeoJSON(geometry)::json as geometry
+        id, name, type, "maxMagnitude", 
+        "activityLevel", "slipRate",
+        "lastEvent", source,
+        ST_AsGeoJSON(geometry::geometry)::json as geometry
       FROM "fault_lines"
       ${where}
-      ORDER BY activity_level DESC, max_magnitude DESC
+      ORDER BY "activityLevel" DESC, "maxMagnitude" DESC
       LIMIT $${paramIndex++} OFFSET $${paramIndex}
     `, ...values, params.limit, params.offset) as any[];
 
@@ -59,10 +59,10 @@ faultRoutes.get('/:faultId', async (req, res, next) => {
 
     const fault = await prisma.$queryRawUnsafe(`
       SELECT 
-        id, name, type, max_magnitude as "maxMagnitude", 
-        activity_level as "activityLevel", slip_rate as "slipRate",
-        last_event as "lastEvent", source, metadata,
-        ST_AsGeoJSON(geometry)::json as geometry
+        id, name, type, "maxMagnitude", 
+        "activityLevel", "slipRate",
+        "lastEvent", source, metadata,
+        ST_AsGeoJSON(geometry::geometry)::json as geometry
       FROM "fault_lines"
       WHERE id = $1
     `, faultId) as any[];
@@ -89,13 +89,13 @@ faultRoutes.get('/nearby/:latitude/:longitude', async (req, res, next) => {
 
     const faults = await prisma.$queryRawUnsafe(`
       SELECT 
-        id, name, type, max_magnitude as "maxMagnitude", 
-        activity_level as "activityLevel",
+        id, name, type, "maxMagnitude", 
+        "activityLevel",
         ST_Distance(
           geometry::geography,
           ST_SetSRID(ST_MakePoint($1, $2), 4326)::geography
         ) / 1000 as distance_km,
-        ST_AsGeoJSON(geometry)::json as geometry
+        ST_AsGeoJSON(geometry::geometry)::json as geometry
       FROM "fault_lines"
       WHERE ST_DWithin(
         geometry,

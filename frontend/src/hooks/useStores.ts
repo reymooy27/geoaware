@@ -59,7 +59,7 @@ export const useMapStore = create<MapState>()(
     (set) => ({
       center: { latitude: -2.5489, longitude: 118.0149 },
       zoom: 5,
-      style: 'standard',
+      style: 'hybrid',
       showFaults: true,
       showEarthquakes: true,
       showSoil: false,
@@ -67,10 +67,15 @@ export const useMapStore = create<MapState>()(
       setCenter: (center) => set({ center }),
       setZoom: (zoom) => set({ zoom }),
       setStyle: (style) => set({ style }),
-      toggleLayer: (layer) => set((state) => ({ [layer]: !state[layer as keyof MapState] })),
+      toggleLayer: (layer) => set((state) => {
+        if (layer === 'faults') return { showFaults: !state.showFaults };
+        if (layer === 'earthquakes') return { showEarthquakes: !state.showEarthquakes };
+        if (layer === 'soil') return { showSoil: !state.showSoil };
+        return {};
+      }),
       selectFault: (fault) => set({ selectedFault: fault }),
     }),
-    { name: 'geoaware-map', storage: createJSONStorage(() => localStorage) }
+    { name: 'geoaware-map', storage: createJSONStorage(() => localStorage), version: 1, migrate: (state: any) => { state.style = 'hybrid'; return state; } }
   )
 );
 

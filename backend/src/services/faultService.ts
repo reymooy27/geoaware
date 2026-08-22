@@ -4,10 +4,10 @@ import type { FaultLine, Coordinates } from '../../../shared/dist/types/index.js
 export async function getNearestFault(coordinates: Coordinates): Promise<FaultLine | null> {
   const result = await prisma.$queryRawUnsafe(`
     SELECT 
-      id, name, type, max_magnitude as "maxMagnitude", 
-      activity_level as "activityLevel", slip_rate as "slipRate",
-      last_event as "lastEvent", source,
-      ST_AsGeoJSON(geometry)::json as geometry,
+      id, name, type, "maxMagnitude", 
+      "activityLevel", "slipRate",
+      "lastEvent", source,
+      ST_AsGeoJSON(geometry::geometry)::json as geometry,
       ST_Distance(
         geometry::geography,
         ST_SetSRID(ST_MakePoint($1, $2), 4326)::geography
@@ -40,10 +40,10 @@ export async function getFaultsInRadius(
 ): Promise<FaultLine[]> {
   const result = await prisma.$queryRawUnsafe(`
     SELECT 
-      id, name, type, max_magnitude as "maxMagnitude", 
-      activity_level as "activityLevel", slip_rate as "slipRate",
-      last_event as "lastEvent", source,
-      ST_AsGeoJSON(geometry)::json as geometry,
+      id, name, type, "maxMagnitude", 
+      "activityLevel", "slipRate",
+      "lastEvent", source,
+      ST_AsGeoJSON(geometry::geometry)::json as geometry,
       ST_Distance(
         geometry::geography,
         ST_SetSRID(ST_MakePoint($1, $2), 4326)::geography
@@ -73,12 +73,12 @@ export async function getFaultsInRadius(
 export async function getAllFaults(): Promise<FaultLine[]> {
   const result = await prisma.$queryRawUnsafe(`
     SELECT 
-      id, name, type, max_magnitude as "maxMagnitude", 
-      activity_level as "activityLevel", slip_rate as "slipRate",
-      last_event as "lastEvent", source,
-      ST_AsGeoJSON(geometry)::json as geometry
+      id, name, type, "maxMagnitude", 
+      "activityLevel", "slipRate",
+      "lastEvent", source,
+      ST_AsGeoJSON(geometry::geometry)::json as geometry
     FROM "fault_lines"
-    ORDER BY activity_level DESC, max_magnitude DESC
+    ORDER BY "activityLevel" DESC, "maxMagnitude" DESC
   `) as any[];
 
   return result.map((fault: any) => ({

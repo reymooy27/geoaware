@@ -1,7 +1,7 @@
 import axios from 'axios';
-import { Prisma } from '@prisma/client';
 import { prisma } from '../utils/prisma.js';
 import { XMLParser } from 'fast-xml-parser';
+import { env } from '../config/env.js';
 
 const logger = {
   info: (obj: any, msg: string) => console.log(`[INFO] ${msg}`, obj),
@@ -40,15 +40,51 @@ interface USGSEvent {
   id: string;
 }
 
-function parseBMKGDate(dateStr: string, timeStr: string): Date {
+const ID_MONTHS: Record<string, number> = {
+  Jan: 0, Peb: 1, Mar: 2, Apr: 3, Mei: 4, Jun: 5,
+  Jul: 6, Agu: 7, Sep: 8, Okt: 9, Nov: 10, Des: 11,
+  Januari: 0, Februari: 1, Maret: 2, April: 3, Juni: 5,
+  Juli: 6, Agustus: 7, September: 8, Oktober: 9, November: 10, Desember: 11,
+};
+
+/**
+ * Parse BMKG date. Handles:
+ * - ISO 8601 DateTime (preferred): 2026-08-22T01:31:00+00:00
+ * - Indonesian format: 22 Agu 226 / 08:31:00 WIB
+ * - Legacy slash format: 22/08/2026 / 08:31:00
+ */
+function parseBMKGDateTime(isoStr: string, dateStr: string, timeStr: string): Date {
+  // Prefer ISO 8601 DateTime if available
+  if (isoStr) {
+    const d = new Date(isoStr);
+    if (!isNaN(d.getTime())) return d;
+  }
+
+  // Try Indonesian format: "22 Agu 2026"
+  const indoMatch = dateStr.match(/(\d+)\s+(\w+)\s+(\d{4})/);
+  if (indoMatch) {
+    const day = parseInt(indoMatch[1]);
+    const month = ID_MONTHS[indoMatch[2]] ?? 0;
+    const year = parseInt(indoMatch[3]);
+    const timeParts = timeStr.replace(/\s*WIB|\s*WITA|\s*WIT/gi, '').split(':').map(Number);
+    return new Date(year, month, day, timeParts[0] || 0, timeParts[1] || 0, timeParts[2] || 0);
+  }
+
+  // Legacy: DD/MM/YYYY
   const [day, month, year] = dateStr.split('/').map(Number);
   const [hour, minute, second] = timeStr.split(':').map(Number);
   return new Date(year, month - 1, day, hour, minute, second);
 }
 
 function parseBMKGCoordinates(coordStr: string): { lat: number; lng: number } {
-  const [latStr, lngStr] = coordStr.split(',').map(s => s.trim());
-  
+  const parts = coordStr.split(',').map(s => s.trim());
+  if (parts.length >= 2) {
+    const lat = parseFloat(parts[0]);
+    const lng = parseFloat(parts[1]);
+    if (!isNaN(lat) && !isNaN(lng)) return { lat, lng };
+  }
+
+  // Fallback: DMS format "8°03'00" S"
   const parseDMS = (dms: string): number => {
     const match = dms.match(/(\d+)°(\d+)'(\d+\.?\d*)"([NSWE])/);
     if (!match) return 0;
@@ -59,8 +95,8 @@ function parseBMKGCoordinates(coordStr: string): { lat: number; lng: number } {
   };
 
   return {
-    lat: parseDMS(latStr),
-    lng: parseDMS(lngStr),
+    lat: parseDMS(parts[0] || ''),
+    lng: parseDMS(parts[1] || ''),
   };
 }
 
@@ -70,11 +106,48 @@ const xmlParser = new XMLParser({
   trimValues: true,
 });
 
+/**
+ * Insert earthquake using raw SQL so PostGIS handles geometry via ST_SetSRID.
+ */
+async function insertEarthquake(params: {
+  externalId: string;
+  magnitude: number;
+  depth: number;
+  lng: number;
+  lat: number;
+  place: string;
+  time: Date;
+  source: string;
+  felt: boolean;
+  tsunami?: boolean;
+  metadata?: Record<string, unknown>;
+}): Promise<boolean> {
+  const {
+    externalId, magnitude, depth, lng, lat, place,
+    time, source, felt, tsunami = false, metadata = {},
+  } = params;
+
+  const metaJson = JSON.stringify(metadata).replace(/'/g, "''");
+
+  try {
+    await prisma.$executeRawUnsafe(`
+      INSERT INTO earthquake_events
+        ("id", "externalId", "magnitude", "depth", "location", "place", "time", "source", "felt", "tsunami", "metadata", "createdAt")
+      VALUES
+        (gen_random_uuid()::text, $1, $2, $3, ST_SetSRID(ST_MakePoint($4, $5), 4326)::geometry, $6, $7, $8::"EventSource", $9, $10, $11::jsonb, NOW())
+      ON CONFLICT ("externalId") DO NOTHING
+    `, externalId, magnitude, depth, lng, lat, place, time, source, felt, tsunami, metaJson);
+    return true;
+  } catch (e: any) {
+    logger.error({ error: e.message, externalId }, 'Failed to insert earthquake');
+    return false;
+  }
+}
+
 export async function fetchBMKGEvents(): Promise<number> {
   try {
-    const response = await axios.get('https://data.bmkg.go.id/gempadirasakan.xml', {
+    const response = await axios.get(env.BMKG_API_URL, {
       timeout: 10000,
-      headers: { 'Accept': 'application/xml' },
     });
 
     const xml = response.data;
@@ -90,15 +163,18 @@ export async function fetchBMKGEvents(): Promise<number> {
     let saved = 0;
 
     for (const gempa of gempaArray) {
+      // New BMKG format: coordinates inside <point><coordinates>, old format: <Coordinates>
+      const coordinates = gempa.point?.coordinates || gempa.Coordinates || '';
+
       const event: BMKGEvent = {
         Tanggal: gempa.Tanggal || '',
         Jam: gempa.Jam || '',
         DateTime: gempa.DateTime || '',
-        Coordinates: gempa.Coordinates || '',
+        Coordinates: coordinates,
         Lintang: gempa.Lintang || '',
         Bujur: gempa.Bujur || '',
         Magnitude: gempa.Magnitude || '',
-        Kedalaman: gempa.Kedalaman || '',
+        Kedalaman: (gempa.Kedalaman || '').replace(/\s*km$/i, ''),
         Wilayah: gempa.Wilayah || '',
         Potensi: gempa.Potensi || '',
       };
@@ -111,31 +187,26 @@ export async function fetchBMKGEvents(): Promise<number> {
       const { lat, lng } = parseBMKGCoordinates(event.Coordinates);
       if (lat === 0 && lng === 0) continue;
 
-      const time = parseBMKGDate(event.Tanggal, event.Jam);
+      const time = parseBMKGDateTime(event.DateTime, event.Tanggal, event.Jam);
       const externalId = `bmkg-${time.getTime()}-${lat.toFixed(4)}-${lng.toFixed(4)}`;
 
-      try {
-        await prisma.earthquakeEvent.create({
-          data: {
-            externalId,
-            magnitude,
-            depth: parseFloat(event.Kedalaman) || 10,
-            location: { type: 'Point', coordinates: [lng, lat] },
-            place: event.Wilayah,
-            time,
-            source: 'BMKG',
-            felt: true,
-            metadata: {
-              lintang: event.Lintang,
-              bujur: event.Bujur,
-              potensi: event.Potensi,
-            },
-          },
-        });
-        saved++;
-      } catch (e: any) {
-        if (e.code !== 'P2002') throw e;
-      }
+      const inserted = await insertEarthquake({
+        externalId,
+        magnitude,
+        depth: parseFloat(event.Kedalaman) || 10,
+        lng,
+        lat,
+        place: event.Wilayah,
+        time,
+        source: 'BMKG',
+        felt: true,
+        metadata: {
+          lintang: event.Lintang,
+          bujur: event.Bujur,
+          potensi: event.Potensi,
+        },
+      });
+      if (inserted) saved++;
     }
 
     logger.info({ count: saved }, 'BMKG events fetched');
@@ -148,7 +219,7 @@ export async function fetchBMKGEvents(): Promise<number> {
 
 export async function fetchUSGSEvents(): Promise<number> {
   try {
-    const response = await axios.get('https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/all_hour.geojson', {
+    const response = await axios.get(env.USGS_API_URL, {
       timeout: 10000,
     });
 
@@ -165,28 +236,23 @@ export async function fetchUSGSEvents(): Promise<number> {
       const time = new Date(properties.time);
       const externalId = `usgs-${id}`;
 
-      try {
-        await prisma.earthquakeEvent.create({
-          data: {
-            externalId,
-            magnitude: properties.mag,
-            depth: depth || 10,
-            location: { type: 'Point', coordinates: [lng, lat] },
-            place: properties.place,
-            time,
-            source: 'USGS',
-            felt: (properties.felt ?? 0) > 0,
-            tsunami: properties.tsunami === 1,
-            metadata: {
-              url: properties.url,
-              code: properties.code,
-            },
-          },
-        });
-        saved++;
-      } catch (e: any) {
-        if (e.code !== 'P2002') throw e;
-      }
+      const inserted = await insertEarthquake({
+        externalId,
+        magnitude: properties.mag,
+        depth: depth || 10,
+        lng,
+        lat,
+        place: properties.place,
+        time,
+        source: 'USGS',
+        felt: (properties.felt ?? 0) > 0,
+        tsunami: properties.tsunami === 1,
+        metadata: {
+          url: properties.url,
+          code: properties.code,
+        },
+      });
+      if (inserted) saved++;
     }
 
     logger.info({ count: saved }, 'USGS events fetched');

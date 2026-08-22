@@ -4,7 +4,7 @@ import 'mapbox-gl/dist/mapbox-gl.css';
 import { useMapStore } from '@/hooks/useStores';
 import { useQuery } from '@/hooks/useQuery';
 import type { FaultLine, EarthquakeEvent, Coordinates } from '@geoaware/shared';
-import { getFaultTypeColor, getRiskColor } from '@/utils/helpers';
+import { getFaultTypeColor, getRiskColor, cn } from '@/utils/helpers';
 
 mapboxgl.accessToken = (import.meta as any).env?.VITE_MAPBOX_TOKEN || '';
 
@@ -18,80 +18,51 @@ export function MapContainer({ className, onMapLoad }: MapContainerProps) {
   const map = useRef<mapboxgl.Map | null>(null);
   const [mapLoaded, setMapLoaded] = useState(false);
   
-  const { center, zoom, style, showFaults, showEarthquakes, setCenter, setZoom, selectFault } = useMapStore();
-  const { fetchFaults, fetchEarthquakes, loading } = useQuery();
+  const { style, showFaults, showEarthquakes, selectFault } = useMapStore();
+  const { fetchFaults, fetchEarthquakes } = useQuery();
 
-  const initializeMap = useCallback(async () => {
+  const styleUrls = {
+    standard: 'mapbox://styles/mapbox/light-v11',
+    satellite: 'mapbox://styles/mapbox/satellite-v9',
+    hybrid: 'mapbox://styles/mapbox/satellite-streets-v12',
+  };
+
+  useEffect(() => {
     if (map.current || !mapRef.current) return;
 
-    const initialCenter: [number, number] = [center.longitude, center.latitude];
-    
-    const styleUrls = {
-      standard: 'mapbox://styles/mapbox/light-v11',
-      satellite: 'mapbox://styles/mapbox/satellite-v9',
-      hybrid: 'mapbox://styles/mapbox/satellite-streets-v12',
-    };
-
-    map.current = new mapboxgl.Map({
+    const m = new mapboxgl.Map({
       container: mapRef.current,
-      style: styleUrls[style],
-      center: initialCenter,
-      zoom: zoom,
+      style: styleUrls[style] || styleUrls.hybrid,
+      center: [118.0149, -2.5489],
+      zoom: 5,
       attributionControl: false,
       preserveDrawingBuffer: true,
     });
 
-    map.current.addControl(new mapboxgl.NavigationControl({ showCompass: false }), 'top-right');
-    map.current.addControl(new mapboxgl.GeolocateControl({
+    m.addControl(new mapboxgl.NavigationControl({ showCompass: false }), 'top-right');
+    m.addControl(new mapboxgl.GeolocateControl({
       positionOptions: { enableHighAccuracy: true },
       trackUserLocation: true,
       showUserHeading: true,
     }), 'top-right');
 
-    map.current.on('load', () => {
+    m.on('load', () => {
+      map.current = m;
       setMapLoaded(true);
-      loadMapLayers();
-      onMapLoad?.(map.current!);
+      onMapLoad?.(m);
     });
 
-    map.current.on('moveend', () => {
-      if (map.current) {
-        const c = map.current.getCenter();
-        const z = map.current.getZoom();
-        setCenter({ latitude: c.lat, longitude: c.lng });
-        setZoom(z);
-      }
-    });
+    return () => {
+      m.remove();
+      map.current = null;
+      setMapLoaded(false);
+    };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-    map.current.on('style.load', () => {
-      loadMapLayers();
-    });
-  }, [center, zoom, style, setCenter, setZoom, onMapLoad]);
-
-  const loadMapLayers = async () => {
-    if (!map.current) return;
-
-    if (showFaults) {
-      await addFaultLayer();
-    } else {
-      removeLayer('fault-lines');
-      removeLayer('fault-lines-glow');
-    }
-
-    if (showEarthquakes) {
-      await addEarthquakeLayer();
-    } else {
-      removeLayer('earthquakes');
-      removeLayer('earthquakes-cluster');
-      removeLayer('earthquakes-cluster-count');
-    }
-  };
-
-  const addFaultLayer = async () => {
-    if (!map.current) return;
-    
+  const addFaultLayer = async (m: mapboxgl.Map) => {
     try {
       const faults = await fetchFaults();
+      if (!faults || faults.length === 0) return;
       
       const geojson = {
         type: 'FeatureCollection' as const,
@@ -108,14 +79,14 @@ export function MapContainer({ className, onMapLoad }: MapContainerProps) {
         })),
       };
 
-      if (map.current.getSource('faults')) {
-        (map.current.getSource('faults') as mapboxgl.GeoJSONSource).setData(geojson);
+      if (m.getSource('faults')) {
+        (m.getSource('faults') as mapboxgl.GeoJSONSource).setData(geojson);
         return;
       }
 
-      map.current.addSource('faults', { type: 'geojson', data: geojson });
+      m.addSource('faults', { type: 'geojson', data: geojson });
 
-      map.current.addLayer({
+      m.addLayer({
         id: 'fault-lines-glow',
         type: 'line',
         source: 'faults',
@@ -134,7 +105,7 @@ export function MapContainer({ className, onMapLoad }: MapContainerProps) {
         },
       });
 
-      map.current.addLayer({
+      m.addLayer({
         id: 'fault-lines',
         type: 'line',
         source: 'faults',
@@ -152,7 +123,7 @@ export function MapContainer({ className, onMapLoad }: MapContainerProps) {
         },
       });
 
-      map.current.on('click', 'fault-lines', (e) => {
+      m.on('click', 'fault-lines', (e) => {
         const feature = e.features?.[0];
         const props = feature?.properties as { id?: string } | undefined;
         if (props?.id) {
@@ -161,23 +132,17 @@ export function MapContainer({ className, onMapLoad }: MapContainerProps) {
         }
       });
 
-      map.current.on('mouseenter', 'fault-lines', () => {
-        map.current!.getCanvas().style.cursor = 'pointer';
-      });
-
-      map.current.on('mouseleave', 'fault-lines', () => {
-        map.current!.getCanvas().style.cursor = '';
-      });
+      m.on('mouseenter', 'fault-lines', () => { m.getCanvas().style.cursor = 'pointer'; });
+      m.on('mouseleave', 'fault-lines', () => { m.getCanvas().style.cursor = ''; });
     } catch (error) {
       console.error('Failed to load fault lines:', error);
     }
   };
 
-  const addEarthquakeLayer = async () => {
-    if (!map.current) return;
-
+  const addEarthquakeLayer = async (m: mapboxgl.Map) => {
     try {
       const events = await fetchEarthquakes({ minMagnitude: 3.0, limit: 500 });
+      if (!events || events.length === 0) return;
       
       const geojson = {
         type: 'FeatureCollection' as const,
@@ -197,12 +162,12 @@ export function MapContainer({ className, onMapLoad }: MapContainerProps) {
         })),
       };
 
-      if (map.current.getSource('earthquakes')) {
-        (map.current.getSource('earthquakes') as mapboxgl.GeoJSONSource).setData(geojson);
+      if (m.getSource('earthquakes')) {
+        (m.getSource('earthquakes') as mapboxgl.GeoJSONSource).setData(geojson);
         return;
       }
 
-      map.current.addSource('earthquakes', { 
+      m.addSource('earthquakes', { 
         type: 'geojson', 
         data: geojson,
         cluster: true,
@@ -210,7 +175,7 @@ export function MapContainer({ className, onMapLoad }: MapContainerProps) {
         clusterRadius: 50,
       });
 
-      map.current.addLayer({
+      m.addLayer({
         id: 'earthquakes-cluster',
         type: 'circle',
         source: 'earthquakes',
@@ -228,7 +193,7 @@ export function MapContainer({ className, onMapLoad }: MapContainerProps) {
         },
       });
 
-      map.current.addLayer({
+      m.addLayer({
         id: 'earthquakes-cluster-count',
         type: 'symbol',
         source: 'earthquakes',
@@ -243,7 +208,7 @@ export function MapContainer({ className, onMapLoad }: MapContainerProps) {
         },
       });
 
-      map.current.addLayer({
+      m.addLayer({
         id: 'earthquakes',
         type: 'circle',
         source: 'earthquakes',
@@ -265,7 +230,7 @@ export function MapContainer({ className, onMapLoad }: MapContainerProps) {
         },
       });
 
-      map.current.on('click', 'earthquakes', (e) => {
+      m.on('click', 'earthquakes', (e) => {
         const feature = e.features?.[0];
         if (feature) {
           const props = feature.properties;
@@ -273,37 +238,28 @@ export function MapContainer({ className, onMapLoad }: MapContainerProps) {
         }
       });
 
-      map.current.on('click', 'earthquakes-cluster', (e) => {
-        const features = map.current!.queryRenderedFeatures(e.point, { layers: ['earthquakes-cluster'] });
+      m.on('click', 'earthquakes-cluster', (e) => {
+        const features = m.queryRenderedFeatures(e.point, { layers: ['earthquakes-cluster'] });
         if (features[0]) {
           const clusterId = features[0].properties?.cluster_id;
-          const source = map.current!.getSource('earthquakes') as mapboxgl.GeoJSONSource;
+          const source = m.getSource('earthquakes') as mapboxgl.GeoJSONSource;
           source.getClusterExpansionZoom(clusterId, (err, zoom) => {
-            if (!err && zoom) {
-              map.current!.easeTo({ center: e.lngLat, zoom: zoom });
-            }
+            if (!err && zoom) m.easeTo({ center: e.lngLat, zoom: zoom });
           });
         }
       });
 
-      map.current.on('mouseenter', 'earthquakes', () => {
-        map.current!.getCanvas().style.cursor = 'pointer';
-      });
-      map.current.on('mouseenter', 'earthquakes-cluster', () => {
-        map.current!.getCanvas().style.cursor = 'pointer';
-      });
-      map.current.on('mouseleave', 'earthquakes', () => {
-        map.current!.getCanvas().style.cursor = '';
-      });
-      map.current.on('mouseleave', 'earthquakes-cluster', () => {
-        map.current!.getCanvas().style.cursor = '';
-      });
+      m.on('mouseenter', 'earthquakes', () => { m.getCanvas().style.cursor = 'pointer'; });
+      m.on('mouseenter', 'earthquakes-cluster', () => { m.getCanvas().style.cursor = 'pointer'; });
+      m.on('mouseleave', 'earthquakes', () => { m.getCanvas().style.cursor = ''; });
+      m.on('mouseleave', 'earthquakes-cluster', () => { m.getCanvas().style.cursor = ''; });
     } catch (error) {
       console.error('Failed to load earthquakes:', error);
     }
   };
 
   const showEarthquakePopup = (lngLat: mapboxgl.LngLat, props: any) => {
+    if (!map.current) return;
     new mapboxgl.Popup({ closeButton: true, closeOnClick: true })
       .setLngLat(lngLat)
       .setHTML(`
@@ -320,43 +276,50 @@ export function MapContainer({ className, onMapLoad }: MapContainerProps) {
           </div>
         </div>
       `)
-      .addTo(map.current!);
+      .addTo(map.current);
   };
 
-  const removeLayer = (id: string) => {
-    if (map.current?.getLayer(id)) {
-      map.current.removeLayer(id);
+  // Change map style & reload layers after style loads
+  useEffect(() => {
+    const m = map.current;
+    if (!m) return;
+    const newStyle = styleUrls[style as keyof typeof styleUrls];
+    if (!newStyle) return;
+    m.setStyle(newStyle);
+    m.once('style.load', () => {
+      if (map.current === m) loadMapLayers();
+    });
+  }, [style]);
+
+  const loadMapLayers = useCallback(async () => {
+    const m = map.current;
+    if (!m || !m.isStyleLoaded()) return;
+    if (showFaults) {
+      await addFaultLayer(m);
+    } else {
+      removeLayer(m, 'fault-lines-glow');
+      removeLayer(m, 'fault-lines');
+      removeSourceSafe(m, 'faults');
     }
-    if (map.current?.getSource(id.replace('-lines', '').replace('-cluster', ''))) {
-      map.current.removeSource(id.replace('-lines', '').replace('-cluster', ''));
+    if (showEarthquakes) {
+      await addEarthquakeLayer(m);
+    } else {
+      removeLayer(m, 'earthquakes-cluster');
+      removeLayer(m, 'earthquakes-cluster-count');
+      removeLayer(m, 'earthquakes');
+      removeSourceSafe(m, 'earthquakes');
     }
-  };
+  }, [showFaults, showEarthquakes]);
 
   useEffect(() => {
-    initializeMap();
-    return () => {
-      map.current?.remove();
-      map.current = null;
-      setMapLoaded(false);
-    };
-  }, [initializeMap]);
-
-  useEffect(() => {
-    if (!mapLoaded || !map.current) return;
-    
-    const styleUrls = {
-      standard: 'mapbox://styles/mapbox/light-v11',
-      satellite: 'mapbox://styles/mapbox/satellite-v9',
-      hybrid: 'mapbox://styles/mapbox/satellite-streets-v12',
-    };
-    
-    map.current.setStyle(styleUrls[style]);
-  }, [style, mapLoaded]);
-
-  useEffect(() => {
-    if (!mapLoaded || !map.current) return;
-    loadMapLayers();
-  }, [showFaults, showEarthquakes, mapLoaded]);
+    if (!mapLoaded) return;
+    const m = map.current;
+    if (!m) return;
+    if (m.isStyleLoaded()) { loadMapLayers(); } else {
+      const handler = () => { if (m.isStyleLoaded()) { loadMapLayers(); m.off('style.load', handler); } };
+      m.on('style.load', handler);
+    }
+  }, [mapLoaded, loadMapLayers]);
 
   return (
     <div 
@@ -368,4 +331,10 @@ export function MapContainer({ className, onMapLoad }: MapContainerProps) {
   );
 }
 
-import { cn } from '../../utils/helpers';
+function removeLayer(m: mapboxgl.Map, id: string) {
+  try { if (m.getLayer(id)) m.removeLayer(id); } catch {}
+}
+
+function removeSourceSafe(m: mapboxgl.Map, id: string) {
+  try { if (m.getSource(id)) m.removeSource(id); } catch {}
+}

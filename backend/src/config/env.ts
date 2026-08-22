@@ -9,8 +9,8 @@ export const env = {
   
   MAPBOX_TOKEN: process.env.MAPBOX_TOKEN || '',
   
-  BMKG_API_URL: process.env.BMGK_API_URL || 'https://data.bmkg.go.id/gempadirasakan.xml',
-  USGS_API_URL: process.env.USGS_API_URL || 'https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/all_hour.geojson',
+  BMKG_API_URL: process.env.BMKG_API_URL || 'https://data.bmkg.go.id/DataMKG/TEWS/gempadirasakan.xml',
+  USGS_API_URL: process.env.USGS_API_URL || 'https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/all_day.geojson',
   
   FIREBASE_PROJECT_ID: process.env.FIREBASE_PROJECT_ID || '',
   FIREBASE_CLIENT_EMAIL: process.env.FIREBASE_CLIENT_EMAIL || '',

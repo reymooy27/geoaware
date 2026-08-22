@@ -46,27 +46,15 @@ offlineRoutes.post('/regions/:userId', async (req, res, next) => {
       throw new AppError(400, 'Region too large (max 200MB)', 'REGION_TOO_LARGE');
     }
 
-    const region = await prisma.offlineMapRegion.create({
-      data: {
-        userId,
-        name: data.name,
-        bounds: {
-          type: 'Polygon',
-          coordinates: [[
-            [data.minLng, data.minLat],
-            [data.maxLng, data.minLat],
-            [data.maxLng, data.maxLat],
-            [data.minLng, data.maxLat],
-            [data.minLng, data.minLat],
-          ]],
-        },
-        minZoom: data.minZoom,
-        maxZoom: data.maxZoom,
-        sizeMB: estimatedSizeMB,
-        downloadedAt: new Date(),
-        expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
-      },
-    });
+    const polygonWkt = `POLYGON((${data.minLng} ${data.minLat}, ${data.maxLng} ${data.minLat}, ${data.maxLng} ${data.maxLat}, ${data.minLng} ${data.maxLat}, ${data.minLng} ${data.minLat}))`;
+    const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+    const [region] = await prisma.$queryRawUnsafe<[{ id: string }]>(`
+      INSERT INTO offline_map_regions
+        ("id", "userId", "name", "bounds", "minZoom", "maxZoom", "sizeMB", "downloadedAt", "expiresAt", "createdAt")
+      VALUES
+        (gen_random_uuid()::text, $1, $2, ST_GeomFromText('${polygonWkt}', 4326)::geometry, $3, $4, $5, $6, $7, NOW())
+      RETURNING id
+    `, userId, data.name, data.minZoom, data.maxZoom, estimatedSizeMB, new Date(), expiresAt);
 
     res.status(201).json(region);
   } catch (error) {
@@ -100,10 +88,10 @@ offlineRoutes.get('/evacuation-routes', async (req, res, next) => {
       SELECT 
         id, name, "assemblyName", "assemblyCapacity", 
         "distanceKm", "estimatedTimeMin",
-        ST_AsGeoJSON(geometry)::json as geometry,
-        ST_AsGeoJSON("assemblyPoint")::json as assemblyPoint
+        ST_AsGeoJSON(geometry::geometry)::json as geometry,
+        ST_AsGeoJSON("assemblyPoint"::geometry)::json as assemblyPoint
       FROM "evacuation_routes"
-      WHERE is_active = true
+      WHERE "isActive" = true
       AND ST_DWithin(
         "assemblyPoint",
         ST_SetSRID(ST_MakePoint($1, $2), 4326)::geography,
@@ -134,9 +122,9 @@ offlineRoutes.get('/assembly-points', async (req, res, next) => {
     const points = await prisma.$queryRawUnsafe(`
       SELECT 
         id, name, address, capacity, facilities,
-        ST_AsGeoJSON(location)::json as location
+        ST_AsGeoJSON(location::geometry)::json as location
       FROM "assembly_points"
-      WHERE is_active = true
+      WHERE "isActive" = true
       AND ST_DWithin(
         location,
         ST_SetSRID(ST_MakePoint($1, $2), 4326)::geography,

@@ -133,14 +133,11 @@ alertRoutes.post('/safe-status', async (req, res, next) => {
   try {
     const data = safeStatusSchema.parse(req.body);
 
-    const status = await prisma.safeStatus.create({
-      data: {
-        userId: data.userId,
-        location: { type: 'Point', coordinates: [data.longitude, data.latitude] },
-        status: data.status.toUpperCase() as any,
-        message: data.message,
-      },
-    });
+    const [status] = await prisma.$queryRawUnsafe<[{ id: string }]>(`
+      INSERT INTO safe_statuses ("id", "userId", "location", "status", "message", "timestamp")
+      VALUES (gen_random_uuid()::text, $1, ST_SetSRID(ST_MakePoint($2, $3), 4326)::geometry, $4::"SafeStatusType", $5, NOW())
+      RETURNING id
+    `, data.userId, data.longitude, data.latitude, data.status.toUpperCase(), data.message || null);
 
     // Notify emergency contacts
     const contacts = await prisma.emergencyContact.findMany({

@@ -4,6 +4,17 @@ import { prisma } from '../utils/prisma.js';
 import { AppError } from '../middleware/errorHandler.js';
 import { fetchBMKGEvents, fetchUSGSEvents } from '../services/earthquakeProvider.js';
 
+/** Convert PostGIS WKB bytes from Prisma to {longitude, latitude} */
+function parseGeometry(buf: Buffer | null): { longitude: number; latitude: number } | null {
+  if (!buf) return null;
+  // PostGIS WKB with SRID: byte0=order, bytes1-4=type+flags, bytes5-8=SRID(LE), bytes9-16=lng, bytes17-24=lat
+  if (buf.length < 25) return null;
+  const view = new DataView(buf.buffer, buf.byteOffset, buf.byteLength);
+  const lng = view.getFloat64(9, true);
+  const lat = view.getFloat64(17, true);
+  return { longitude: lng, latitude: lat };
+}
+
 export const earthquakeRoutes = Router();
 
 const querySchema = z.object({
@@ -65,7 +76,12 @@ earthquakeRoutes.get('/', async (req, res, next) => {
         params.offset
       ) as any[];
       
-      return res.json(events);
+      return res.json({
+        events: events.map(e => ({ ...e, location: parseGeometry(e.location) })),
+        total: events.length,
+        limit: params.limit,
+        offset: params.offset,
+      });
     }
 
     const [events, total] = await Promise.all([
@@ -78,7 +94,13 @@ earthquakeRoutes.get('/', async (req, res, next) => {
       prisma.earthquakeEvent.count({ where }),
     ]);
 
-    res.json({ events, total, limit: params.limit, offset: params.offset });
+    // Convert geometry Bytes to GeoJSON coordinates
+    const formatted = events.map(e => ({
+      ...e,
+      location: parseGeometry(e.location as any),
+    }));
+
+    res.json({ events: formatted, total, limit: params.limit, offset: params.offset });
   } catch (error) {
     next(error);
   }
@@ -136,7 +158,7 @@ earthquakeRoutes.get('/stats', async (req, res, next) => {
         WHERE time >= $1
         GROUP BY range
         ORDER BY range
-      `, since) as any[],
+      `, since) as unknown as any[],
       prisma.earthquakeEvent.groupBy({
         by: ['source'],
         where: { time: { gte: since } },
@@ -148,7 +170,7 @@ earthquakeRoutes.get('/stats', async (req, res, next) => {
         WHERE time >= $1
         GROUP BY DATE(time)
         ORDER BY date
-      `, since) as any[],
+      `, since) as unknown as any[],
     ]);
 
     res.json({ byMagnitude, bySource, byDay });

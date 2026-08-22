@@ -4,16 +4,16 @@ import type { SoilType, Coordinates } from '../../../shared/dist/types/index.js'
 export async function getSoilTypeAtLocation(coordinates: Coordinates): Promise<SoilType | null> {
   const result = await prisma.$queryRawUnsafe(`
     SELECT 
-      id, name, code, liquefaction_risk as "liquefactionRisk",
+      id, name, code, "liquefactionRisk",
       description, vs30, source, metadata,
-      ST_AsGeoJSON(geometry)::json as geometry
+      ST_AsGeoJSON(geometry::geometry)::json as geometry
     FROM "soil_types"
     WHERE ST_Contains(
       geometry,
       ST_SetSRID(ST_MakePoint($1, $2), 4326)
     )
     ORDER BY 
-      CASE liquefaction_risk 
+      CASE "liquefactionRisk" 
         WHEN 'CRITICAL' THEN 4
         WHEN 'HIGH' THEN 3
         WHEN 'MEDIUM' THEN 2
@@ -39,9 +39,9 @@ export async function getSoilTypeAtLocation(coordinates: Coordinates): Promise<S
 export async function getAllSoilTypes(): Promise<SoilType[]> {
   const result = await prisma.$queryRawUnsafe(`
     SELECT 
-      id, name, code, liquefaction_risk as "liquefactionRisk",
+      id, name, code, "liquefactionRisk",
       description, vs30, source, metadata,
-      ST_AsGeoJSON(geometry)::json as geometry
+      ST_AsGeoJSON(geometry::geometry)::json as geometry
     FROM "soil_types"
     ORDER BY name
   `) as any[];
