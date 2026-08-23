@@ -1,9 +1,11 @@
-import { Router } from 'express';
+import { Hono } from 'hono';
 import { z } from 'zod';
 import { prisma } from '../utils/prisma.js';
+import type { Env } from '../config/env.js';
 import { AppError } from '../middleware/errorHandler.js';
+import { readJson } from '../utils/http.js';
 
-export const userRoutes = Router();
+export const userRoutes = new Hono<Env>();
 
 const updateProfileSchema = z.object({
   name: z.string().min(1).max(100).optional(),
@@ -14,70 +16,49 @@ const updateProfileSchema = z.object({
   mapStyle: z.enum(['STANDARD', 'SATELLITE', 'HYBRID']).optional(),
 });
 
-userRoutes.get('/:userId', async (req, res, next) => {
-  try {
-    const { userId } = req.params;
+const userSelect = {
+  id: true,
+  email: true,
+  name: true,
+  phone: true,
+  avatarUrl: true,
+  theme: true,
+  language: true,
+  units: true,
+  mapStyle: true,
+  createdAt: true,
+} as const;
 
-    const user = await prisma.user.findUnique({
-      where: { id: userId },
-      select: {
-        id: true,
-        email: true,
-        name: true,
-        phone: true,
-        avatarUrl: true,
-        theme: true,
-        language: true,
-        units: true,
-        mapStyle: true,
-        createdAt: true,
-      },
-    });
+userRoutes.get('/:userId', async (c) => {
+  const { userId } = c.req.param();
 
-    if (!user) {
-      throw new AppError(404, 'User not found', 'USER_NOT_FOUND');
-    }
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: userSelect,
+  });
 
-    res.json(user);
-  } catch (error) {
-    next(error);
+  if (!user) {
+    throw new AppError(404, 'User not found', 'USER_NOT_FOUND');
   }
+
+  return c.json(user);
 });
 
-userRoutes.put('/:userId', async (req, res, next) => {
-  try {
-    const { userId } = req.params;
-    const data = updateProfileSchema.parse(req.body);
+userRoutes.put('/:userId', async (c) => {
+  const { userId } = c.req.param();
+  const data = updateProfileSchema.parse(await readJson(c));
 
-    const user = await prisma.user.update({
-      where: { id: userId },
-      data,
-      select: {
-        id: true,
-        email: true,
-        name: true,
-        phone: true,
-        avatarUrl: true,
-        theme: true,
-        language: true,
-        units: true,
-        mapStyle: true,
-        createdAt: true,
-      },
-    });
+  const user = await prisma.user.update({
+    where: { id: userId },
+    data,
+    select: userSelect,
+  });
 
-    res.json(user);
-  } catch (error) {
-    next(error);
-  }
+  return c.json(user);
 });
 
-userRoutes.delete('/:userId', async (req, res, next) => {
-  try {
-    const { userId } = req.params;
-    await prisma.user.delete({ where: { id: userId } });
-    res.status(204).send();
-  } catch (error) {
-    next(error);
-  }
+userRoutes.delete('/:userId', async (c) => {
+  const { userId } = c.req.param();
+  await prisma.user.delete({ where: { id: userId } });
+  return c.body(null, 204);
 });

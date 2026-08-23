@@ -1,5 +1,6 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
+import type { Map as MapboxMap } from 'mapbox-gl';
 import { MapContainer } from '../components/Map/MapContainer';
 import { useMapStore, useAlertStore, useUserStore } from '../hooks/useStores';
 import { useQuery } from '../hooks/useQuery';
@@ -19,6 +20,7 @@ export function HomePage() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [eqExpanded, setEqExpanded] = useState(false);
   const [userLoc, setUserLoc] = useState<{ lat: number; lng: number } | null>(null);
+  const mapInstanceRef = useRef<MapboxMap | null>(null);
 
   useEffect(() => {
     loadRecentEarthquakes();
@@ -48,10 +50,24 @@ export function HomePage() {
     }
   };
 
+  const handleFocusEarthquake = (eq: any) => {
+    const latitude = eq?.location?.latitude;
+    const longitude = eq?.location?.longitude;
+    if (typeof latitude !== 'number' || typeof longitude !== 'number' || !mapInstanceRef.current) return;
+
+    if (!showEarthquakes) toggleLayer('earthquakes');
+
+    mapInstanceRef.current.flyTo({
+      center: [longitude, latitude],
+      zoom: Math.max(mapInstanceRef.current.getZoom(), 8),
+      essential: true,
+    });
+  };
+
   return (
     <div className="relative w-full h-[calc(100vh-0rem)] bg-gray-900">
       {/* Fullscreen map */}
-      <MapContainer className="absolute inset-0" />
+      <MapContainer className="absolute inset-0" onMapLoad={(m) => { mapInstanceRef.current = m; }} />
 
       {/* Top bar */}
       <div className="absolute top-0 left-0 right-0 z-20 flex items-center justify-between p-3">
@@ -98,9 +114,18 @@ export function HomePage() {
         </div>
       </div>
 
+      {/* Sidebar backdrop: klik di luar sidebar menutupnya */}
+      {sidebarOpen && (
+        <div
+          className="absolute inset-0 z-[25] bg-black/40 transition-opacity"
+          onClick={() => setSidebarOpen(false)}
+          aria-hidden="true"
+        />
+      )}
+
       {/* Sidebar */}
       {sidebarOpen && (
-        <div className="absolute inset-y-0 left-0 z-30 w-72 bg-white dark:bg-gray-800 shadow-2xl flex flex-col">
+        <div className="absolute inset-y-0 left-0 z-30 w-72 bg-white dark:bg-gray-800 shadow-2xl flex flex-col animate-in">
           <div className="p-4 border-b border-gray-200 dark:border-gray-700">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-xl bg-primary-600 flex items-center justify-center">
@@ -122,8 +147,8 @@ export function HomePage() {
         </div>
       )}
 
-      {/* Bottom-right: earthquake card */}
-      <div className="absolute bottom-4 right-4 z-20 w-72">
+      {/* Bottom: earthquake card — center di mobile, bottom-right di layar besar */}
+      <div className="absolute z-20 inset-x-3 bottom-4 sm:inset-x-auto sm:right-4 sm:w-72">
         <div className="bg-white/90 dark:bg-gray-800/90 backdrop-blur-sm rounded-xl shadow-lg overflow-hidden">
           <div className="flex items-center justify-between px-3 py-2 border-b border-gray-200/50 dark:border-gray-700/50">
             <div className="flex items-center gap-1.5">
@@ -137,7 +162,14 @@ export function HomePage() {
           </div>
           <div className={cn('divide-y divide-gray-100/50 dark:divide-gray-700/50 overflow-y-auto transition-all', eqExpanded ? 'max-h-[50vh]' : 'max-h-[180px]')}>
             {recentEarthquakes.map((eq) => (
-              <div key={eq.id} className="px-3 py-2 hover:bg-gray-50 dark:hover:bg-gray-700/30 transition-colors cursor-pointer">
+              <div
+                key={eq.id}
+                role="button"
+                tabIndex={0}
+                onClick={() => handleFocusEarthquake(eq)}
+                onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') handleFocusEarthquake(eq); }}
+                className="px-3 py-2 hover:bg-gray-50 dark:hover:bg-gray-700/30 transition-colors cursor-pointer focus:outline-none focus:bg-gray-50 dark:focus:bg-gray-700/30"
+              >
                 <div className="flex items-center justify-between gap-2">
                   <p className="text-xs font-medium text-gray-900 dark:text-gray-100 truncate flex-1 min-w-0">{eq.place}</p>
                   <span className={cn('flex-shrink-0 text-[10px] font-bold px-1.5 py-0.5 rounded',

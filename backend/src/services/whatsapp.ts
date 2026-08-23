@@ -1,4 +1,4 @@
-import { env } from '../config/env.js';
+import { getEnv } from '../config/env.js';
 
 const logger = {
   info: (obj: any, msg: string) => console.log(`[INFO] ${msg}`, obj),
@@ -8,6 +8,7 @@ const logger = {
 };
 
 export async function sendWhatsApp(phone: string, message: string): Promise<boolean> {
+  const env = getEnv();
   if (!env.WHATSAPP_API_URL || !env.WHATSAPP_API_TOKEN) {
     logger.warn('WhatsApp API not configured, skipping WhatsApp');
     return false;

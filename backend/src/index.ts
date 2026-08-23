@@ -1,87 +1,63 @@
-import 'dotenv/config';
-import express from 'express';
-import cors from 'cors';
-import helmet from 'helmet';
-import morgan from 'morgan';
-import { createServer } from 'http';
-import { Server } from 'socket.io';
+import { Hono } from 'hono';
+import { cors } from 'hono/cors';
+import { secureHeaders } from 'hono/secure-headers';
+import { logger as honoLogger } from 'hono/logger';
 
-import { env } from './config/env.js';
-import { errorHandler } from './middleware/errorHandler.js';
-import { requestLogger } from './middleware/requestLogger.js';
+import type { Env, Bindings } from './config/env.js';
+import { getEnv, initEnv } from './config/env.js';
+import { onError, notFound } from './middleware/errorHandler.js';
 import { rateLimiter } from './middleware/rateLimiter.js';
-import { routes } from './routes/index.js';
-import { setupSocketHandlers } from './services/socket.js';
-import { startEarthquakePolling } from './services/earthquakePoller.js';
-import { prisma } from './utils/prisma.js';
+import { api } from './routes/index.js';
+import { runEarthquakeSync, cleanupOldEvents } from './services/scheduler.js';
 
-const logger = {
-  info: (msg: string) => console.log(`[INFO] ${msg}`),
-  error: (obj: any, msg: string) => console.error(`[ERROR] ${msg}`, obj),
-};
+const app = new Hono<Env>();
 
-const app = express();
-const httpServer = createServer(app);
-const io = new Server(httpServer, {
-  cors: {
-    origin: env.CORS_ORIGIN,
+app.use('*', async (c, next) => {
+  initEnv(c.env);
+  await next();
+});
+
+app.use('*', secureHeaders());
+app.use('*', async (c, next) => {
+  const { CORS_ORIGINS, NODE_ENV } = getEnv();
+  return cors({
+    origin: (origin) =>
+      !origin || CORS_ORIGINS.includes(origin) || NODE_ENV !== 'production'
+        ? origin
+        : CORS_ORIGINS[0],
     credentials: true,
-  },
+  })(c, next);
 });
+app.use('*', honoLogger());
+app.use('/api/*', rateLimiter);
 
-app.use(helmet({
-  contentSecurityPolicy: false,
-  crossOriginEmbedderPolicy: false,
-}));
-app.use(cors({
-  origin: env.CORS_ORIGIN,
-  credentials: true,
-}));
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
-app.use(morgan('combined', { stream: { write: (msg) => logger.info(msg.trim()) } }));
-app.use(requestLogger);
-app.use(rateLimiter);
+app.get('/health', (c) =>
+  c.json({ status: 'ok', timestamp: new Date().toISOString() })
+);
 
-app.get('/health', (_req, res) => {
-  res.json({ status: 'ok', timestamp: new Date().toISOString() });
-});
+app.route('/api', api);
 
-app.use('/api', routes);
+app.notFound(notFound);
+app.onError(onError);
 
-app.use(errorHandler);
+export default {
+  fetch: app.fetch,
+  scheduled(controller: ScheduledController, env: Bindings, ctx: ExecutionContext) {
+    initEnv(env);
 
-setupSocketHandlers(io);
-
-async function start() {
-  try {
-    await prisma.$connect();
-    logger.info('Database connected');
-
-    if (env.NODE_ENV !== 'test') {
-      startEarthquakePolling(io);
-      logger.info('Earthquake polling started');
+    if (controller.cron === '0 * * * *') {
+      ctx.waitUntil(
+        cleanupOldEvents().catch((error) =>
+          console.error('[ERROR] Cleanup error', error)
+        )
+      );
+      return;
     }
 
-    httpServer.listen(env.PORT, () => {
-      logger.info(`Server running on port ${env.PORT} in ${env.NODE_ENV} mode`);
-    });
-  } catch (error) {
-    logger.error({ error }, 'Failed to start server');
-    process.exit(1);
-  }
-}
-
-const shutdown = async () => {
-  logger.info('Shutting down...');
-  await prisma.$disconnect();
-  httpServer.close(() => {
-    logger.info('Server closed');
-    process.exit(0);
-  });
-};
-
-process.on('SIGTERM', shutdown);
-process.on('SIGINT', shutdown);
-
-start();
+    ctx.waitUntil(
+      runEarthquakeSync().catch((error) =>
+        console.error('[ERROR] Earthquake polling error', error)
+      )
+    );
+  },
+} satisfies ExportedHandler<Bindings>;

@@ -1,4 +1,4 @@
-import { env } from '../config/env.js';
+import { getEnv } from '../config/env.js';
 
 const logger = {
   info: (obj: any, msg: string) => console.log(`[INFO] ${msg}`, obj),
@@ -8,13 +8,14 @@ const logger = {
 };
 
 export async function sendSMS(phone: string, message: string): Promise<boolean> {
+  const env = getEnv();
   if (!env.TWILIO_ACCOUNT_SID || !env.TWILIO_AUTH_TOKEN || !env.TWILIO_PHONE_NUMBER) {
     logger.warn('Twilio not configured, skipping SMS');
     return false;
   }
 
   try {
-    const auth = Buffer.from(`${env.TWILIO_ACCOUNT_SID}:${env.TWILIO_AUTH_TOKEN}`).toString('base64');
+    const auth = btoa(`${env.TWILIO_ACCOUNT_SID}:${env.TWILIO_AUTH_TOKEN}`);
     
     const response = await fetch(
       `https://api.twilio.com/2010-04-01/Accounts/${env.TWILIO_ACCOUNT_SID}/Messages.json`,

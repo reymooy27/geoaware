@@ -1,12 +1,14 @@
-import { Router } from 'express';
+import { Hono } from 'hono';
 import { z } from 'zod';
 import { prisma } from '../utils/prisma.js';
+import type { Env } from '../config/env.js';
 import { AppError } from '../middleware/errorHandler.js';
+import { readJson } from '../utils/http.js';
 import { sendPushNotification } from '../services/notification.js';
 import { sendSMS } from '../services/sms.js';
 import { sendWhatsApp } from '../services/whatsapp.js';
 
-export const alertRoutes = Router();
+export const alertRoutes = new Hono<Env>();
 
 const settingsSchema = z.object({
   enabled: z.boolean().default(true),
@@ -32,183 +34,152 @@ const safeStatusSchema = z.object({
   message: z.string().max(500).optional(),
 });
 
-alertRoutes.get('/settings/:userId', async (req, res, next) => {
-  try {
-    const { userId } = req.params;
-    
-    const settings = await prisma.userSettings.findUnique({
-      where: { userId },
-    });
+alertRoutes.get('/settings/:userId', async (c) => {
+  const { userId } = c.req.param();
 
-    const contacts = await prisma.emergencyContact.findMany({
-      where: { userId },
-      orderBy: { isPrimary: 'desc' },
-    });
+  const settings = await prisma.userSettings.findUnique({
+    where: { userId },
+  });
 
-    res.json({
-      ...settings,
-      emergencyContacts: contacts,
-    });
-  } catch (error) {
-    next(error);
-  }
+  const contacts = await prisma.emergencyContact.findMany({
+    where: { userId },
+    orderBy: { isPrimary: 'desc' },
+  });
+
+  return c.json({
+    ...settings,
+    emergencyContacts: contacts,
+  });
 });
 
-alertRoutes.put('/settings/:userId', async (req, res, next) => {
-  try {
-    const { userId } = req.params;
-    const data = settingsSchema.parse(req.body);
+alertRoutes.put('/settings/:userId', async (c) => {
+  const { userId } = c.req.param();
+  const data = settingsSchema.parse(await readJson(c));
 
-    const settings = await prisma.userSettings.upsert({
-      where: { userId },
-      update: data,
-      create: { userId, ...data },
-    });
+  const settings = await prisma.userSettings.upsert({
+    where: { userId },
+    update: data,
+    create: { userId, ...data },
+  });
 
-    res.json(settings);
-  } catch (error) {
-    next(error);
-  }
+  return c.json(settings);
 });
 
-alertRoutes.post('/contacts/:userId', async (req, res, next) => {
-  try {
-    const { userId } = req.params;
-    const data = contactSchema.parse(req.body);
+alertRoutes.post('/contacts/:userId', async (c) => {
+  const { userId } = c.req.param();
+  const data = contactSchema.parse(await readJson(c));
 
-    if (data.isPrimary) {
+  if (data.isPrimary) {
+    await prisma.emergencyContact.updateMany({
+      where: { userId, isPrimary: true },
+      data: { isPrimary: false },
+    });
+  }
+
+  const contact = await prisma.emergencyContact.create({
+    data: { userId, ...data },
+  });
+
+  return c.json(contact, 201);
+});
+
+alertRoutes.put('/contacts/:contactId', async (c) => {
+  const { contactId } = c.req.param();
+  const data = contactSchema.partial().parse(await readJson(c));
+
+  if (data.isPrimary) {
+    const contact = await prisma.emergencyContact.findUnique({ where: { id: contactId } });
+    if (contact) {
       await prisma.emergencyContact.updateMany({
-        where: { userId, isPrimary: true },
+        where: { userId: contact.userId, isPrimary: true },
         data: { isPrimary: false },
       });
     }
-
-    const contact = await prisma.emergencyContact.create({
-      data: { userId, ...data },
-    });
-
-    res.status(201).json(contact);
-  } catch (error) {
-    next(error);
   }
+
+  const contact = await prisma.emergencyContact.update({
+    where: { id: contactId },
+    data,
+  });
+
+  return c.json(contact);
 });
 
-alertRoutes.put('/contacts/:contactId', async (req, res, next) => {
-  try {
-    const { contactId } = req.params;
-    const data = contactSchema.partial().parse(req.body);
+alertRoutes.delete('/contacts/:contactId', async (c) => {
+  const { contactId } = c.req.param();
+  await prisma.emergencyContact.delete({ where: { id: contactId } });
+  return c.body(null, 204);
+});
 
-    if (data.isPrimary) {
-      const contact = await prisma.emergencyContact.findUnique({ where: { id: contactId } });
-      if (contact) {
-        await prisma.emergencyContact.updateMany({
-          where: { userId: contact.userId, isPrimary: true },
-          data: { isPrimary: false },
-        });
-      }
+alertRoutes.post('/safe-status', async (c) => {
+  const data = safeStatusSchema.parse(await readJson(c));
+
+  const [status] = await prisma.$queryRawUnsafe<[{ id: string }]>(`
+    INSERT INTO safe_statuses ("id", "userId", "location", "status", "message", "timestamp")
+    VALUES (gen_random_uuid()::text, $1, ST_SetSRID(ST_MakePoint($2, $3), 4326)::geometry, $4::"SafeStatusType", $5, NOW())
+    RETURNING id
+  `, data.userId, data.longitude, data.latitude, data.status.toUpperCase(), data.message || null);
+
+  // Notify emergency contacts
+  const contacts = await prisma.emergencyContact.findMany({
+    where: { userId: data.userId },
+  });
+
+  const user = await prisma.user.findUnique({ where: { id: data.userId } });
+  const userName = user?.name || 'Seseorang';
+
+  const statusText = {
+    safe: 'selamat',
+    need_help: 'membutuhkan bantuan',
+    injured: 'terluka',
+  }[data.status];
+
+  const message = `[GeoAware] ${userName} mengirim status: ${statusText.toUpperCase()}${data.message ? ` - ${data.message}` : ''}. Lokasi: https://maps.google.com/?q=${data.latitude},${data.longitude}`;
+
+  for (const contact of contacts) {
+    if (contact.phone) {
+      await Promise.allSettled([
+        sendSMS(contact.phone, message),
+        sendWhatsApp(contact.phone, message),
+      ]);
     }
-
-    const contact = await prisma.emergencyContact.update({
-      where: { id: contactId },
-      data,
-    });
-
-    res.json(contact);
-  } catch (error) {
-    next(error);
   }
+
+  return c.json(status, 201);
 });
 
-alertRoutes.delete('/contacts/:contactId', async (req, res, next) => {
-  try {
-    const { contactId } = req.params;
-    await prisma.emergencyContact.delete({ where: { id: contactId } });
-    res.status(204).send();
-  } catch (error) {
-    next(error);
-  }
+alertRoutes.get('/safe-status/:userId', async (c) => {
+  const { userId } = c.req.param();
+  const { limit = '20' } = c.req.query();
+
+  const statuses = await prisma.safeStatus.findMany({
+    where: { userId },
+    orderBy: { timestamp: 'desc' },
+    take: parseInt(limit),
+  });
+
+  return c.json(statuses);
 });
 
-alertRoutes.post('/safe-status', async (req, res, next) => {
-  try {
-    const data = safeStatusSchema.parse(req.body);
+alertRoutes.post('/test/:userId', async (c) => {
+  const { userId } = c.req.param();
+  const body = (await readJson(c)) as { type?: string };
+  const type = body.type ?? 'push';
 
-    const [status] = await prisma.$queryRawUnsafe<[{ id: string }]>(`
-      INSERT INTO safe_statuses ("id", "userId", "location", "status", "message", "timestamp")
-      VALUES (gen_random_uuid()::text, $1, ST_SetSRID(ST_MakePoint($2, $3), 4326)::geometry, $4::"SafeStatusType", $5, NOW())
-      RETURNING id
-    `, data.userId, data.longitude, data.latitude, data.status.toUpperCase(), data.message || null);
+  const user = await prisma.user.findUnique({ where: { id: userId } });
+  if (!user) throw new AppError(404, 'User not found', 'USER_NOT_FOUND');
 
-    // Notify emergency contacts
-    const contacts = await prisma.emergencyContact.findMany({
-      where: { userId: data.userId },
-    });
+  const message = '[GeoAware] Ini adalah notifikasi tes peringatan gempa. Sistem Anda berfungsi dengan baik.';
 
-    const user = await prisma.user.findUnique({ where: { id: data.userId } });
-    const userName = user?.name || 'Seseorang';
-
-    const statusText = {
-      safe: 'selamat',
-      need_help: 'membutuhkan bantuan',
-      injured: 'terluka',
-    }[data.status];
-
-    const message = `[GeoAware] ${userName} mengirim status: ${statusText.toUpperCase()}${data.message ? ` - ${data.message}` : ''}. Lokasi: https://maps.google.com/?q=${data.latitude},${data.longitude}`;
-
-    for (const contact of contacts) {
-      if (contact.phone) {
-        await Promise.allSettled([
-          sendSMS(contact.phone, message),
-          sendWhatsApp(contact.phone, message),
-        ]);
-      }
-    }
-
-    res.status(201).json(status);
-  } catch (error) {
-    next(error);
+  if (type === 'push') {
+    await sendPushNotification(userId, 'Tes Peringatan Gempa', message);
+  } else if (type === 'sms') {
+    const contact = await prisma.emergencyContact.findFirst({ where: { userId, isPrimary: true } });
+    if (contact) await sendSMS(contact.phone, message);
+  } else if (type === 'whatsapp') {
+    const contact = await prisma.emergencyContact.findFirst({ where: { userId, isPrimary: true } });
+    if (contact) await sendWhatsApp(contact.phone, message);
   }
-});
 
-alertRoutes.get('/safe-status/:userId', async (req, res, next) => {
-  try {
-    const { userId } = req.params;
-    const { limit = '20' } = req.query;
-
-    const statuses = await prisma.safeStatus.findMany({
-      where: { userId },
-      orderBy: { timestamp: 'desc' },
-      take: parseInt(limit as string),
-    });
-
-    res.json(statuses);
-  } catch (error) {
-    next(error);
-  }
-});
-
-alertRoutes.post('/test/:userId', async (req, res, next) => {
-  try {
-    const { userId } = req.params;
-    const { type = 'push' } = req.body;
-
-    const user = await prisma.user.findUnique({ where: { id: userId } });
-    if (!user) throw new AppError(404, 'User not found', 'USER_NOT_FOUND');
-
-    const message = '[GeoAware] Ini adalah notifikasi tes peringatan gempa. Sistem Anda berfungsi dengan baik.';
-
-    if (type === 'push') {
-      await sendPushNotification(userId, 'Tes Peringatan Gempa', message);
-    } else if (type === 'sms') {
-      const contact = await prisma.emergencyContact.findFirst({ where: { userId, isPrimary: true } });
-      if (contact) await sendSMS(contact.phone, message);
-    } else if (type === 'whatsapp') {
-      const contact = await prisma.emergencyContact.findFirst({ where: { userId, isPrimary: true } });
-      if (contact) await sendWhatsApp(contact.phone, message);
-    }
-
-    res.json({ success: true });
-  } catch (error) {
-    next(error);
-  }
+  return c.json({ success: true });
 });

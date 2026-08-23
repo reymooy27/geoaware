@@ -15,6 +15,8 @@ out/
 .env.development.local
 .env.test.local
 .env.production.local
+.dev.vars
+.wrangler/
 
 # Logs
 logs/
@@ -44,6 +46,12 @@ coverage/
 *.tsbuildinfo
 .eslintcache
 .stylelintcache
+
+# OMC agent state
+.omo/
+
+# Codegraph index
+.codegraph/
 
 # Turbo
 .turbo/

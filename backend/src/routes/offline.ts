@@ -1,9 +1,11 @@
-import { Router } from 'express';
+import { Hono } from 'hono';
 import { z } from 'zod';
 import { prisma } from '../utils/prisma.js';
+import type { Env } from '../config/env.js';
 import { AppError } from '../middleware/errorHandler.js';
+import { readJson } from '../utils/http.js';
 
-export const offlineRoutes = Router();
+export const offlineRoutes = new Hono<Env>();
 
 const regionSchema = z.object({
   name: z.string().min(1).max(100),
@@ -15,129 +17,109 @@ const regionSchema = z.object({
   maxZoom: z.number().min(0).max(22).default(16),
 });
 
-offlineRoutes.get('/regions/:userId', async (req, res, next) => {
-  try {
-    const { userId } = req.params;
-    
-    const regions = await prisma.offlineMapRegion.findMany({
-      where: { userId },
-      orderBy: { createdAt: 'desc' },
-    });
+offlineRoutes.get('/regions/:userId', async (c) => {
+  const { userId } = c.req.param();
 
-    res.json(regions);
-  } catch (error) {
-    next(error);
-  }
+  const regions = await prisma.offlineMapRegion.findMany({
+    where: { userId },
+    orderBy: { createdAt: 'desc' },
+  });
+
+  return c.json(regions);
 });
 
-offlineRoutes.post('/regions/:userId', async (req, res, next) => {
-  try {
-    const { userId } = req.params;
-    const data = regionSchema.parse(req.body);
+offlineRoutes.post('/regions/:userId', async (c) => {
+  const { userId } = c.req.param();
+  const data = regionSchema.parse(await readJson(c));
 
-    if (data.minLat >= data.maxLat || data.minLng >= data.maxLng) {
-      throw new AppError(400, 'Invalid bounds', 'INVALID_BOUNDS');
-    }
-
-    const areaKm2 = calculateAreaKm2(data);
-    const estimatedSizeMB = estimateTileSize(areaKm2, data.minZoom, data.maxZoom);
-
-    if (estimatedSizeMB > 200) {
-      throw new AppError(400, 'Region too large (max 200MB)', 'REGION_TOO_LARGE');
-    }
-
-    const polygonWkt = `POLYGON((${data.minLng} ${data.minLat}, ${data.maxLng} ${data.minLat}, ${data.maxLng} ${data.maxLat}, ${data.minLng} ${data.maxLat}, ${data.minLng} ${data.minLat}))`;
-    const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
-    const [region] = await prisma.$queryRawUnsafe<[{ id: string }]>(`
-      INSERT INTO offline_map_regions
-        ("id", "userId", "name", "bounds", "minZoom", "maxZoom", "sizeMB", "downloadedAt", "expiresAt", "createdAt")
-      VALUES
-        (gen_random_uuid()::text, $1, $2, ST_GeomFromText('${polygonWkt}', 4326)::geometry, $3, $4, $5, $6, $7, NOW())
-      RETURNING id
-    `, userId, data.name, data.minZoom, data.maxZoom, estimatedSizeMB, new Date(), expiresAt);
-
-    res.status(201).json(region);
-  } catch (error) {
-    next(error);
+  if (data.minLat >= data.maxLat || data.minLng >= data.maxLng) {
+    throw new AppError(400, 'Invalid bounds', 'INVALID_BOUNDS');
   }
+
+  const areaKm2 = calculateAreaKm2(data);
+  const estimatedSizeMB = estimateTileSize(areaKm2, data.minZoom, data.maxZoom);
+
+  if (estimatedSizeMB > 200) {
+    throw new AppError(400, 'Region too large (max 200MB)', 'REGION_TOO_LARGE');
+  }
+
+  const polygonWkt = `POLYGON((${data.minLng} ${data.minLat}, ${data.maxLng} ${data.minLat}, ${data.maxLng} ${data.maxLat}, ${data.minLng} ${data.maxLat}, ${data.minLng} ${data.minLat}))`;
+  const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+  const [region] = await prisma.$queryRawUnsafe<[{ id: string }]>(`
+    INSERT INTO offline_map_regions
+      ("id", "userId", "name", "bounds", "minZoom", "maxZoom", "sizeMB", "downloadedAt", "expiresAt", "createdAt")
+    VALUES
+      (gen_random_uuid()::text, $1, $2, ST_GeomFromText('${polygonWkt}', 4326)::geometry, $3, $4, $5, $6, $7, NOW())
+    RETURNING id
+  `, userId, data.name, data.minZoom, data.maxZoom, estimatedSizeMB, new Date(), expiresAt);
+
+  return c.json(region, 201);
 });
 
-offlineRoutes.delete('/regions/:regionId', async (req, res, next) => {
-  try {
-    const { regionId } = req.params;
-    await prisma.offlineMapRegion.delete({ where: { id: regionId } });
-    res.status(204).send();
-  } catch (error) {
-    next(error);
-  }
+offlineRoutes.delete('/regions/:regionId', async (c) => {
+  const { regionId } = c.req.param();
+  await prisma.offlineMapRegion.delete({ where: { id: regionId } });
+  return c.body(null, 204);
 });
 
-offlineRoutes.get('/evacuation-routes', async (req, res, next) => {
-  try {
-    const { latitude, longitude, radiusKm = '10' } = req.query;
+offlineRoutes.get('/evacuation-routes', async (c) => {
+  const { latitude, longitude, radiusKm = '10' } = c.req.query();
 
-    if (!latitude || !longitude) {
-      throw new AppError(400, 'Latitude and longitude required', 'MISSING_COORDINATES');
-    }
-
-    const lat = parseFloat(latitude as string);
-    const lng = parseFloat(longitude as string);
-    const radius = parseFloat(radiusKm as string) * 1000;
-
-    const routes = await prisma.$queryRawUnsafe(`
-      SELECT 
-        id, name, "assemblyName", "assemblyCapacity", 
-        "distanceKm", "estimatedTimeMin",
-        ST_AsGeoJSON(geometry::geometry)::json as geometry,
-        ST_AsGeoJSON("assemblyPoint"::geometry)::json as assemblyPoint
-      FROM "evacuation_routes"
-      WHERE "isActive" = true
-      AND ST_DWithin(
-        "assemblyPoint",
-        ST_SetSRID(ST_MakePoint($1, $2), 4326)::geography,
-        $3
-      )
-      ORDER BY "distanceKm" ASC
-      LIMIT 10
-    `, lng, lat, radius) as any[];
-
-    res.json(routes);
-  } catch (error) {
-    next(error);
+  if (!latitude || !longitude) {
+    throw new AppError(400, 'Latitude and longitude required', 'MISSING_COORDINATES');
   }
+
+  const lat = parseFloat(latitude);
+  const lng = parseFloat(longitude);
+  const radius = parseFloat(radiusKm) * 1000;
+
+  const routes = await prisma.$queryRawUnsafe(`
+    SELECT
+      id, name, "assemblyName", "assemblyCapacity",
+      "distanceKm", "estimatedTimeMin",
+      ST_AsGeoJSON(geometry::geometry)::json as geometry,
+      ST_AsGeoJSON("assemblyPoint"::geometry)::json as assemblyPoint
+    FROM "evacuation_routes"
+    WHERE "isActive" = true
+    AND ST_DWithin(
+      "assemblyPoint",
+      ST_SetSRID(ST_MakePoint($1, $2), 4326)::geography,
+      $3
+    )
+    ORDER BY "distanceKm" ASC
+    LIMIT 10
+  `, lng, lat, radius) as any[];
+
+  return c.json(routes);
 });
 
-offlineRoutes.get('/assembly-points', async (req, res, next) => {
-  try {
-    const { latitude, longitude, radiusKm = '20' } = req.query;
+offlineRoutes.get('/assembly-points', async (c) => {
+  const { latitude, longitude, radiusKm = '20' } = c.req.query();
 
-    if (!latitude || !longitude) {
-      throw new AppError(400, 'Latitude and longitude required', 'MISSING_COORDINATES');
-    }
-
-    const lat = parseFloat(latitude as string);
-    const lng = parseFloat(longitude as string);
-    const radius = parseFloat(radiusKm as string) * 1000;
-
-    const points = await prisma.$queryRawUnsafe(`
-      SELECT 
-        id, name, address, capacity, facilities,
-        ST_AsGeoJSON(location::geometry)::json as location
-      FROM "assembly_points"
-      WHERE "isActive" = true
-      AND ST_DWithin(
-        location,
-        ST_SetSRID(ST_MakePoint($1, $2), 4326)::geography,
-        $3
-      )
-      ORDER BY capacity DESC
-      LIMIT 20
-    `, lng, lat, radius) as any[];
-
-    res.json(points);
-  } catch (error) {
-    next(error);
+  if (!latitude || !longitude) {
+    throw new AppError(400, 'Latitude and longitude required', 'MISSING_COORDINATES');
   }
+
+  const lat = parseFloat(latitude);
+  const lng = parseFloat(longitude);
+  const radius = parseFloat(radiusKm) * 1000;
+
+  const points = await prisma.$queryRawUnsafe(`
+    SELECT
+      id, name, address, capacity, facilities,
+      ST_AsGeoJSON(location::geometry)::json as location
+    FROM "assembly_points"
+    WHERE "isActive" = true
+    AND ST_DWithin(
+      location,
+      ST_SetSRID(ST_MakePoint($1, $2), 4326)::geography,
+      $3
+    )
+    ORDER BY capacity DESC
+    LIMIT 20
+  `, lng, lat, radius) as any[];
+
+  return c.json(points);
 });
 
 function calculateAreaKm2(bounds: { minLat: number; minLng: number; maxLat: number; maxLng: number }): number {

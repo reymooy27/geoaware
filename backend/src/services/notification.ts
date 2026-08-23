@@ -1,18 +1,11 @@
-import { env } from '../config/env.js';
 import { prisma } from '../utils/prisma.js';
-import { Server } from 'socket.io';
+import { getEnv } from '../config/env.js';
 
 const logger = {
-  info: (obj: any, msg: string) => console.log(`[INFO] ${msg}`, obj),
+  info: (obj: unknown, msg: string) => console.log(`[INFO] ${msg}`, obj),
   warn: (msg: string) => console.warn(`[WARN] ${msg}`),
-  error: (obj: any, msg: string) => console.error(`[ERROR] ${msg}`, obj),
+  error: (obj: unknown, msg: string) => console.error(`[ERROR] ${msg}`, obj),
 };
-
-interface PushNotificationPayload {
-  title: string;
-  body: string;
-  data?: Record<string, string>;
-}
 
 export async function sendPushNotification(
   userId: string,
@@ -20,6 +13,7 @@ export async function sendPushNotification(
   body: string,
   data?: Record<string, string>
 ): Promise<boolean> {
+  const env = getEnv();
   if (!env.FIREBASE_PROJECT_ID || !env.FIREBASE_CLIENT_EMAIL || !env.FIREBASE_PRIVATE_KEY) {
     logger.warn('Firebase not configured, skipping push notification');
     return false;
@@ -40,7 +34,7 @@ export async function sendPushNotification(
     };
 
     const accessToken = await getFirebaseAccessToken();
-    
+
     const response = await fetch(
       `https://fcm.googleapis.com/v1/projects/${env.FIREBASE_PROJECT_ID}/messages:send`,
       {
@@ -69,7 +63,7 @@ export async function sendPushNotification(
 
 async function getFirebaseAccessToken(): Promise<string> {
   const jwt = await generateJWT();
-  
+
   const response = await fetch('https://oauth2.googleapis.com/token', {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -84,10 +78,11 @@ async function getFirebaseAccessToken(): Promise<string> {
 }
 
 async function generateJWT(): Promise<string> {
+  const { FIREBASE_CLIENT_EMAIL, FIREBASE_PRIVATE_KEY } = getEnv();
   const header = { alg: 'RS256', typ: 'JWT' };
   const now = Math.floor(Date.now() / 1000);
   const payload = {
-    iss: env.FIREBASE_CLIENT_EMAIL,
+    iss: FIREBASE_CLIENT_EMAIL,
     scope: 'https://www.googleapis.com/auth/firebase.messaging',
     aud: 'https://oauth2.googleapis.com/token',
     exp: now + 3600,
@@ -97,10 +92,10 @@ async function generateJWT(): Promise<string> {
   const encoder = new TextEncoder();
   const headerB64 = btoa(JSON.stringify(header)).replace(/=/g, '').replace(/\+/g, '-').replace(/\//g, '_');
   const payloadB64 = btoa(JSON.stringify(payload)).replace(/=/g, '').replace(/\+/g, '-').replace(/\//g, '_');
-  
+
   const cryptoKey = await crypto.subtle.importKey(
     'pkcs8',
-    str2ab(env.FIREBASE_PRIVATE_KEY.replace(/-----BEGIN PRIVATE KEY-----|-----END PRIVATE KEY-----|\n/g, '')),
+    str2ab(FIREBASE_PRIVATE_KEY.replace(/-----BEGIN PRIVATE KEY-----|-----END PRIVATE KEY-----|\n/g, '')),
     { name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-256' },
     false,
     ['sign']
@@ -127,7 +122,13 @@ function str2ab(str: string): ArrayBuffer {
   return bytes.buffer;
 }
 
-export async function checkAndNotifyUsers(io: Server) {
+/**
+ * Notify users about recent M≥3.0 events via FCM push.
+ *
+ * Real-time delivery to clients is push-based; clients that miss a push pick
+ * up data through normal polling of GET /api/earthquakes/latest.
+ */
+export async function checkAndNotifyUsers(): Promise<void> {
   try {
     const recentEvents = await prisma.earthquakeEvent.findMany({
       where: {
@@ -149,36 +150,21 @@ export async function checkAndNotifyUsers(io: Server) {
       if (!user.settings?.pushEnabled) continue;
 
       const minMag = user.settings.minMagnitude || 3.0;
-      const radiusKm = user.settings.alertRadiusKm || 100;
 
-      const relevantEvents = recentEvents.filter((event: any) => 
+      const relevantEvents = recentEvents.filter((event: any) =>
         event.magnitude >= minMag
       );
 
       for (const event of relevantEvents) {
-        if (user.settings.pushEnabled) {
-          await sendPushNotification(
-            user.id,
-            `Gempa ${event.magnitude} SR`,
-            `${event.place} - ${event.magnitude} SR, Kedalaman ${event.depth} km`,
-            { eventId: event.id, magnitude: event.magnitude.toString() }
-          );
-        }
-
-        io.to(`user:${user.id}`).emit('earthquake:alert', {
-          id: event.id,
-          magnitude: event.magnitude,
-          place: event.place,
-          time: event.time,
-          coordinates: event.location,
-        });
+        await sendPushNotification(
+          user.id,
+          `Gempa ${event.magnitude} SR`,
+          `${event.place} - ${event.magnitude} SR, Kedalaman ${event.depth} km`,
+          { eventId: event.id, magnitude: event.magnitude.toString() }
+        );
       }
     }
   } catch (error) {
     logger.error({ error }, 'Check and notify error');
   }
-}
-
-export async function broadcastEarthquakeAlert(io: Server, event: any) {
-  io.emit('earthquake:new', event);
 }

@@ -1,0 +1,28 @@
+# Cloudflare Workers local dev secrets (wrangler dev reads this file).
+# Copy to backend/.dev.vars and fill in real values. NEVER commit .dev.vars.
+
+NODE_ENV=development
+
+# Supabase: Project Settings > Database > Connection string
+# Runtime connections MUST use the transaction pooler (port 6543):
+DATABASE_URL=postgresql://postgres.<project-ref>:<password>@aws-0-<region>.pooler.supabase.com:6543/postgres?pgbouncer=true&connection_limit=5
+# Migrations (prisma db push / migrate) use the direct or session pooler:
+DIRECT_URL=postgresql://postgres.<project-ref>:<password>@aws-0-<region>.pooler.supabase.com:5432/postgres
+
+CORS_ORIGIN=http://localhost:3000
+
+MAPBOX_TOKEN=
+
+BMKG_API_URL=https://data.bmkg.go.id/DataMKG/TEWS/gempadirasakan.xml
+USGS_API_URL=https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/all_day.geojson
+
+FIREBASE_PROJECT_ID=
+FIREBASE_CLIENT_EMAIL=
+FIREBASE_PRIVATE_KEY=
+
+TWILIO_ACCOUNT_SID=
+TWILIO_AUTH_TOKEN=
+TWILIO_PHONE_NUMBER=
+
+WHATSAPP_API_URL=
+WHATSAPP_API_TOKEN=

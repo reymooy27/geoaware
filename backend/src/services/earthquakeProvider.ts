@@ -1,12 +1,11 @@
-import axios from 'axios';
 import { prisma } from '../utils/prisma.js';
 import { XMLParser } from 'fast-xml-parser';
-import { env } from '../config/env.js';
+import { getEnv } from '../config/env.js';
 
 const logger = {
-  info: (obj: any, msg: string) => console.log(`[INFO] ${msg}`, obj),
+  info: (obj: unknown, msg: string) => console.log(`[INFO] ${msg}`, obj),
   warn: (msg: string) => console.warn(`[WARN] ${msg}`),
-  error: (obj: any, msg: string) => console.error(`[ERROR] ${msg}`, obj),
+  error: (obj: unknown, msg: string) => console.error(`[ERROR] ${msg}`, obj),
 };
 
 interface BMKGEvent {
@@ -54,13 +53,11 @@ const ID_MONTHS: Record<string, number> = {
  * - Legacy slash format: 22/08/2026 / 08:31:00
  */
 function parseBMKGDateTime(isoStr: string, dateStr: string, timeStr: string): Date {
-  // Prefer ISO 8601 DateTime if available
   if (isoStr) {
     const d = new Date(isoStr);
     if (!isNaN(d.getTime())) return d;
   }
 
-  // Try Indonesian format: "22 Agu 2026"
   const indoMatch = dateStr.match(/(\d+)\s+(\w+)\s+(\d{4})/);
   if (indoMatch) {
     const day = parseInt(indoMatch[1]);
@@ -70,7 +67,6 @@ function parseBMKGDateTime(isoStr: string, dateStr: string, timeStr: string): Da
     return new Date(year, month, day, timeParts[0] || 0, timeParts[1] || 0, timeParts[2] || 0);
   }
 
-  // Legacy: DD/MM/YYYY
   const [day, month, year] = dateStr.split('/').map(Number);
   const [hour, minute, second] = timeStr.split(':').map(Number);
   return new Date(year, month - 1, day, hour, minute, second);
@@ -144,21 +140,27 @@ async function insertEarthquake(params: {
   }
 }
 
+async function fetchWithTimeout(url: string): Promise<Response> {
+  return fetch(url, { signal: AbortSignal.timeout(10_000) });
+}
+
 export async function fetchBMKGEvents(): Promise<number> {
   try {
-    const response = await axios.get(env.BMKG_API_URL, {
-      timeout: 10000,
-    });
+    const response = await fetchWithTimeout(getEnv().BMKG_API_URL);
+    if (!response.ok) {
+      logger.error({ status: response.status }, 'BMKG feed returned non-OK status');
+      return 0;
+    }
 
-    const xml = response.data;
+    const xml = await response.text();
     const parsed = xmlParser.parse(xml);
-    
+
     const gempaElements = parsed?.Infogempa?.gempa;
     if (!gempaElements) {
       logger.warn('No gempa elements found in BMKG response');
       return 0;
     }
-    
+
     const gempaArray = Array.isArray(gempaElements) ? gempaElements : [gempaElements];
     let saved = 0;
 
@@ -219,16 +221,18 @@ export async function fetchBMKGEvents(): Promise<number> {
 
 export async function fetchUSGSEvents(): Promise<number> {
   try {
-    const response = await axios.get(env.USGS_API_URL, {
-      timeout: 10000,
-    });
+    const response = await fetchWithTimeout(getEnv().USGS_API_URL);
+    if (!response.ok) {
+      logger.error({ status: response.status }, 'USGS feed returned non-OK status');
+      return 0;
+    }
 
-    const data = response.data as { features: USGSEvent[] };
+    const data = await response.json() as { features: USGSEvent[] };
     let saved = 0;
 
     for (const feature of data.features) {
       const { properties, geometry, id } = feature;
-      
+
       if (!properties.mag || properties.mag < 3.0) continue;
       if (!geometry.coordinates) continue;
 

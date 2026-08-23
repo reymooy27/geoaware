@@ -223,6 +223,50 @@ docker-compose -f docker-compose.prod.yml build
 docker-compose -f docker-compose.prod.yml up -d
 ```
 
+## ☁️ Cloudflare Deployment (Production)
+
+Backend berjalan sebagai **Cloudflare Worker** (Hono) yang sekaligus menyajikan
+frontend SPA dari *static assets* — satu deploy, satu domain, tanpa CORS.
+Polling BMKG/USGS berjalan via **Cron Triggers** (`* * * * *` sync, `0 * * * *` cleanup).
+
+### 1. Siapkan Supabase (Postgres + PostGIS)
+
+1. Buat project di [supabase.com](https://supabase.com), lalu aktifkan PostGIS:
+   ```sql
+   CREATE EXTENSION IF NOT EXISTS postgis;
+   ```
+2. Ambil connection string dari **Project Settings → Database**:
+   - Runtime (`DATABASE_URL`) → **Transaction pooler, port 6543**
+   - Migrasi (`DIRECT_URL`) → **Session pooler / direct, port 5432**
+
+### 2. Konfigurasi & Deploy
+
+```bash
+# Login Cloudflare (sekali saja)
+npx wrangler login
+
+# Local dev: salin contoh env lalu isi nilai asli
+cp backend/.dev.vars.example backend/.dev.vars
+
+# Push schema ke Supabase (pakai DIRECT_URL dari .dev.vars)
+npm run db:push
+
+# Set secrets produksi (sekali per secret)
+cd backend
+npx wrangler secret put DATABASE_URL    # transaction pooler :6543
+npx wrangler secret put MAPBOX_TOKEN
+# opsional: FIREBASE_*, TWILIO_*, WHATSAPP_*
+
+# Build frontend + typecheck, lalu deploy Worker + assets
+npm run deploy   # dari root repo
+```
+
+Setelah deploy: API tersedia di `https://<worker>.workers.dev/api/*`,
+frontend SPA dilayani dari worker yang sama. Cron Triggers aktif otomatis.
+
+> Catatan rate limiter bersifat per-isolate; untuk limit global ketat tambahkan
+> WAF rate-limiting rule di dashboard Cloudflare.
+
 ## 🔐 Environment Variables
 
 | Variable | Required | Description |
