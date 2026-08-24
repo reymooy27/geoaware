@@ -11,10 +11,14 @@
     "run_worker_first": ["/api/*", "/health"]
   },
   "triggers": {
-    "crons": ["* * * * *", "0 * * * *"]
+    "crons": ["*/5 * * * *", "0 * * * *"]
   },
   "hyperdrive": [
-    { "binding": "HYPERDRIVE", "id": "71fdf946b7ff43ab913ab31f3ae01c35" }
+    {
+      "binding": "HYPERDRIVE",
+      "id": "71fdf946b7ff43ab913ab31f3ae01c35",
+      "localConnectionString": "postgresql://postgres.yqwcodxrouaahuhgvcdj:TPOOX1tfnNbKPzbf@aws-0-ap-southeast-1.pooler.supabase.com:6543/postgres?pgbouncer=true"
+    }
   ],
   "observability": {
     "enabled": true

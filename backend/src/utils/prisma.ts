@@ -9,21 +9,53 @@ const globalForPrisma = globalThis as unknown as {
 };
 
 function resolveConnectionString(): string {
-  // Hyperdrive terminates TLS at Cloudflare's edge and returns a local
+  const env = getEnv();
+  // Prefer Hyperdrive: it terminates TLS at the edge and returns a local
   // connection string — the only reliable Postgres path from Workers, since
   // workerd rejects Supabase's private-root CA chain on direct TCP.
   const hyperdrive = getBindings().HYPERDRIVE;
   if (hyperdrive) return hyperdrive.connectionString;
-  return getEnv().DATABASE_URL;
+  return env.DATABASE_URL;
 }
 
-function createClient(): PrismaClient {
+function createPool(): Pool {
+  const viaHyperdrive = Boolean(getBindings().HYPERDRIVE);
   const pool = new Pool({
     connectionString: resolveConnectionString(),
     max: 5,
-    ssl: { ca: SUPABASE_CA_CHAIN },
+    // Hyperdrive terminates TLS before the connection reaches us, so the CA
+    // chain only applies to direct Supabase connections. In local dev workerd
+    // rejects Supabase's private-root CA, so skip verification.
+    ...(viaHyperdrive
+      ? {}
+      : { ssl: { ca: SUPABASE_CA_CHAIN, rejectUnauthorized: false } }),
+    connectionTimeoutMillis: 10_000,
+    idleTimeoutMillis: 30_000,
+    statement_timeout: 15_000,
+    query_timeout: 15_000,
   });
-  return new PrismaClient({ adapter: new PrismaPg(pool) });
+  pool.on('error', (err) => console.error('[prisma] pg pool error:', err));
+  return pool;
+}
+
+function createClient(): PrismaClient {
+  return new PrismaClient({ adapter: new PrismaPg(createPool()) });
+}
+
+function getClient(): PrismaClient {
+  return (globalForPrisma.__geoawarePrisma ??= createClient());
+}
+
+/**
+ * In local workerd, pooled pg sockets do not survive across requests: a
+ * reused idle connection hangs until timeout. Call this at the start of each
+ * request (dev only) so every request gets a fresh pool.
+ */
+export function resetPrismaForRequest(): void {
+  const stale = globalForPrisma.__geoawarePrisma;
+  if (!stale) return;
+  globalForPrisma.__geoawarePrisma = undefined;
+  void stale.$disconnect().catch(() => {});
 }
 
 /**
@@ -33,7 +65,7 @@ function createClient(): PrismaClient {
  */
 export const prisma: PrismaClient = new Proxy({} as PrismaClient, {
   get(_target, prop) {
-    const client = (globalForPrisma.__geoawarePrisma ??= createClient());
+    const client = getClient();
     const value = Reflect.get(client as object, prop);
     return typeof value === 'function' ? value.bind(client) : value;
   },

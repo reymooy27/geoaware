@@ -97,7 +97,7 @@ npm run dev
 
 # Atau terpisah:
 npm run dev:frontend  # http://localhost:3000
-npm run dev:backend   # http://localhost:4000
+  npm run dev:backend   # http://localhost:8787
 ```
 
 ## 📁 Project Structure

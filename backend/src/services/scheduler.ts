@@ -15,7 +15,7 @@ export interface SyncResult {
 
 /**
  * One polling cycle: fetch BMKG + USGS feeds, persist new events, push
- * notifications to matching users. Invoked by the per-minute Cron Trigger and
+ * notifications to matching users. Invoked by the 5-minute Cron Trigger and
  * by POST /api/earthquakes/sync.
  */
 export async function runEarthquakeSync(): Promise<SyncResult> {
