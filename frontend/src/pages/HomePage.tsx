@@ -124,10 +124,10 @@ export function HomePage() {
       <MapContainer className="absolute inset-0" onMapLoad={(m) => { mapInstanceRef.current = m; }} />
 
       {/* Top bar */}
-      <div className="absolute top-0 left-0 right-0 z-20 flex items-center justify-between p-3">
+      <div className="absolute top-0 left-0 right-0 z-20 flex items-center justify-between p-2 sm:p-3">
         <button
           onClick={() => setSidebarOpen(!sidebarOpen)}
-          className="flex items-center gap-2 bg-white/90 dark:bg-gray-800/90 backdrop-blur-sm rounded-xl px-3 py-2 shadow-lg hover:bg-white dark:hover:bg-gray-800 transition-colors"
+          className="flex items-center gap-2 bg-white/90 dark:bg-gray-800/90 backdrop-blur-sm rounded-xl px-2.5 py-1.5 sm:px-3 sm:py-2 shadow-lg hover:bg-white dark:hover:bg-gray-800 transition-colors"
         >
           {sidebarOpen ? <X className="w-5 h-5 text-gray-700 dark:text-gray-300" /> : <Menu className="w-5 h-5 text-gray-700 dark:text-gray-300" />}
           <div className="w-7 h-7 rounded-lg bg-primary-600 flex items-center justify-center">
@@ -136,7 +136,7 @@ export function HomePage() {
           <span className="font-bold text-gray-900 dark:text-gray-100 hidden sm:block">GeoAware</span>
         </button>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1.5 sm:gap-2">
           {/* Filter Panel */}
           <div className="relative">
             <EarthquakeFilterPanel
@@ -147,10 +147,10 @@ export function HomePage() {
             />
           </div>
 
-          <div className="flex items-center gap-1 bg-white/90 dark:bg-gray-800/90 backdrop-blur-sm rounded-xl p-1.5 shadow-lg">
+          <div className="flex items-center gap-0.5 sm:gap-1 bg-white/90 dark:bg-gray-800/90 backdrop-blur-sm rounded-xl p-1 sm:p-1.5 shadow-lg">
             <button
               onClick={() => toggleLayer('faults')}
-              className={cn('flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors',
+              className={cn('flex items-center gap-1.5 px-2 py-1.5 sm:px-2.5 rounded-lg text-xs font-medium transition-colors',
                 showFaults ? 'bg-primary-100 dark:bg-primary-900/30 text-primary-700 dark:text-primary-300' : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
               )}
             >
@@ -159,7 +159,7 @@ export function HomePage() {
             </button>
             <button
               onClick={() => toggleLayer('earthquakes')}
-              className={cn('flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors',
+              className={cn('flex items-center gap-1.5 px-2 py-1.5 sm:px-2.5 rounded-lg text-xs font-medium transition-colors',
                 showEarthquakes ? 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300' : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
               )}
             >
@@ -170,7 +170,7 @@ export function HomePage() {
 
           <button
             onClick={handleLocateUser}
-            className="bg-white/90 dark:bg-gray-800/90 backdrop-blur-sm rounded-xl p-2 shadow-lg hover:bg-white dark:hover:bg-gray-800 transition-colors"
+            className="bg-white/90 dark:bg-gray-800/90 backdrop-blur-sm rounded-xl p-1.5 sm:p-2 shadow-lg hover:bg-white dark:hover:bg-gray-800 transition-colors"
             title="Lokasi saya"
           >
             <Locate className="w-5 h-5 text-primary-600" />
@@ -212,7 +212,7 @@ export function HomePage() {
       )}
 
       {/* Bottom: earthquake card — center di mobile, bottom-right di layar besar */}
-      <div className="absolute z-20 inset-x-3 bottom-4 sm:inset-x-auto sm:right-4 sm:w-80">
+      <div className="absolute z-20 inset-x-2 bottom-2 sm:inset-x-auto sm:right-4 sm:bottom-4 sm:w-80">
         <div className="bg-gray-900/95 backdrop-blur-md rounded-xl shadow-2xl overflow-hidden border border-gray-700/50">
           {/* Header */}
           <div className="flex items-center justify-between px-3.5 py-2.5 bg-gray-800/80 border-b border-gray-700/50">

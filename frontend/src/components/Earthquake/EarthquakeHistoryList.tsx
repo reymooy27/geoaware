@@ -101,7 +101,15 @@ export function EarthquakeHistoryList({
 
       {/* Full-width panel */}
       {isOpen && (
-        <div className="absolute inset-x-3 bottom-16 sm:inset-x-auto sm:right-4 sm:w-96 sm:bottom-16 z-30 max-h-[60vh] bg-white dark:bg-gray-800 rounded-xl shadow-2xl border border-gray-200 dark:border-gray-700 overflow-hidden flex flex-col animate-in">
+        <>
+          {/* Backdrop */}
+          <div className="fixed inset-0 z-40 bg-black/50 sm:bg-black/40" onClick={onToggle} />
+          {/* Panel: full-screen on mobile, floating on desktop */}
+          <div className="fixed inset-0 z-50 sm:fixed sm:inset-x-auto sm:right-4 sm:bottom-16 sm:top-auto sm:z-50 sm:w-96 sm:max-h-[60vh] bg-white dark:bg-gray-800 sm:rounded-xl shadow-2xl sm:border border-gray-200 dark:border-gray-700 overflow-hidden flex flex-col sm:animate-in">
+            {/* Mobile drag handle */}
+            <div className="flex justify-center py-1.5 sm:hidden">
+              <div className="w-10 h-1 rounded-full bg-gray-300 dark:bg-gray-600" />
+            </div>
           {/* Header */}
           <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 dark:border-gray-700">
             <div className="flex items-center gap-2">
@@ -265,12 +273,12 @@ export function EarthquakeHistoryList({
 
           {/* Pagination */}
           {totalPages > 1 && (
-            <div className="px-4 py-2 border-t border-gray-200 dark:border-gray-700 flex items-center justify-between">
+            <div className="px-4 py-2.5 border-t border-gray-200 dark:border-gray-700 flex items-center justify-between">
               <button
                 onClick={() => setPage(p => Math.max(0, p - 1))}
                 disabled={page === 0}
                 className={cn(
-                  'flex items-center gap-1 px-2 py-1 rounded text-[10px] font-medium transition-colors',
+                  'flex items-center gap-1 px-3 py-1.5 rounded text-[10px] font-medium transition-colors',
                   page === 0
                     ? 'text-gray-300 dark:text-gray-600 cursor-not-allowed'
                     : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
@@ -286,7 +294,7 @@ export function EarthquakeHistoryList({
                 onClick={() => setPage(p => Math.min(totalPages - 1, p + 1))}
                 disabled={page >= totalPages - 1}
                 className={cn(
-                  'flex items-center gap-1 px-2 py-1 rounded text-[10px] font-medium transition-colors',
+                  'flex items-center gap-1 px-3 py-1.5 rounded text-[10px] font-medium transition-colors',
                   page >= totalPages - 1
                     ? 'text-gray-300 dark:text-gray-600 cursor-not-allowed'
                     : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
@@ -297,7 +305,8 @@ export function EarthquakeHistoryList({
               </button>
             </div>
           )}
-        </div>
+          </div>
+        </>
       )}
     </>
   );
