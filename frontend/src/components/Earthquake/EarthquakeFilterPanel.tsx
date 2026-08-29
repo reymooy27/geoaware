@@ -177,41 +177,32 @@ export function EarthquakeFilterPanel({
 
       {/* Panel */}
       {isOpen && (
-        <>
-          {/* Backdrop */}
-          <div className="fixed inset-0 z-40 bg-black/50 sm:bg-transparent" onClick={onToggle} />
-          {/* Panel: bottom-sheet on mobile, dropdown on desktop */}
-          <div className="fixed inset-x-0 bottom-0 z-50 sm:absolute sm:inset-x-auto sm:right-0 sm:top-12 sm:z-30 w-full sm:w-80 max-h-[85vh] sm:max-h-[70vh] bg-white dark:bg-gray-800 rounded-t-2xl sm:rounded-xl shadow-2xl border border-gray-200 dark:border-gray-700 overflow-hidden flex flex-col">
-            {/* Header */}
-            <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 dark:border-gray-700">
-              <div className="flex items-center gap-2">
-                <SlidersHorizontal className="w-4 h-4 text-primary-600 dark:text-primary-400" />
-                <span className="text-sm font-semibold text-gray-900 dark:text-gray-100">
-                  Filter Gempa
-                </span>
-              </div>
-              <div className="flex items-center gap-2">
-                {hasActiveFilters && (
-                  <button
-                    onClick={handleReset}
-                    className="flex items-center gap-1 text-[10px] text-gray-500 dark:text-gray-400 hover:text-red-500 dark:hover:text-red-400 transition-colors"
-                  >
-                    <RotateCcw className="w-3 h-3" />
-                    Reset
-                  </button>
-                )}
-                <button onClick={onToggle} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
-                  <X className="w-4 h-4" />
+        <div className="absolute right-0 top-10 sm:top-12 z-30 w-[calc(100vw-1rem)] sm:w-80 max-h-[75vh] sm:max-h-[70vh] bg-white dark:bg-gray-800 rounded-xl shadow-2xl border border-gray-200 dark:border-gray-700 overflow-hidden flex flex-col">
+          {/* Header */}
+          <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 dark:border-gray-700">
+            <div className="flex items-center gap-2">
+              <SlidersHorizontal className="w-4 h-4 text-primary-600 dark:text-primary-400" />
+              <span className="text-sm font-semibold text-gray-900 dark:text-gray-100">
+                Filter Gempa
+              </span>
+            </div>
+            <div className="flex items-center gap-2">
+              {hasActiveFilters && (
+                <button
+                  onClick={handleReset}
+                  className="flex items-center gap-1 text-[10px] text-gray-500 dark:text-gray-400 hover:text-red-500 dark:hover:text-red-400 transition-colors"
+                >
+                  <RotateCcw className="w-3 h-3" />
+                  Reset
                 </button>
-              </div>
+              )}
+              <button onClick={onToggle} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
+                <X className="w-4 h-4" />
+              </button>
             </div>
+          </div>
 
-            {/* Mobile drag handle */}
-            <div className="flex justify-center py-1.5 sm:hidden">
-              <div className="w-10 h-1 rounded-full bg-gray-300 dark:bg-gray-600" />
-            </div>
-
-            <div className="flex-1 overflow-y-auto p-4 space-y-4">
+          <div className="flex-1 overflow-y-auto p-3 sm:p-4 space-y-3 sm:space-y-4">
             {/* Date Range Section */}
             <FilterSection
               icon={<Calendar className="w-3.5 h-3.5" />}
@@ -470,14 +461,13 @@ export function EarthquakeFilterPanel({
               </span>
               <button
                 onClick={onToggle}
-                className="px-4 py-2 rounded-lg bg-primary-600 text-white text-xs font-medium hover:bg-primary-700 transition-colors"
+                className="px-3 py-1.5 rounded-lg bg-primary-600 text-white text-xs font-medium hover:bg-primary-700 transition-colors"
               >
                 Terapkan
               </button>
             </div>
           </div>
-          </div>
-        </>
+        </div>
       )}
     </>
   );
