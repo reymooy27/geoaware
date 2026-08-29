@@ -101,7 +101,7 @@ export function EarthquakeHistoryList({
 
       {/* Full-width panel */}
       {isOpen && (
-        <div className="absolute inset-x-2 bottom-14 sm:inset-x-auto sm:right-4 sm:bottom-16 sm:w-96 z-30 max-h-[55vh] sm:max-h-[60vh] bg-white dark:bg-gray-800 rounded-xl shadow-2xl border border-gray-200 dark:border-gray-700 overflow-hidden flex flex-col animate-in">
+        <div className="fixed sm:absolute left-2 right-2 bottom-14 sm:left-auto sm:inset-x-auto sm:right-4 sm:bottom-16 sm:w-96 z-30 max-h-[55vh] sm:max-h-[60vh] bg-white dark:bg-gray-800 rounded-xl shadow-2xl border border-gray-200 dark:border-gray-700 overflow-hidden flex flex-col animate-in">
           {/* Header */}
           <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 dark:border-gray-700">
             <div className="flex items-center gap-2">
