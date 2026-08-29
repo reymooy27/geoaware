@@ -121,7 +121,7 @@ export function HomePage() {
   return (
     <div className="relative w-full h-[calc(100vh-0rem)] bg-gray-900">
       {/* Fullscreen map */}
-      <MapContainer className="absolute inset-0" onMapLoad={(m) => { mapInstanceRef.current = m; }} />
+      <MapContainer className="absolute inset-0" onMapLoad={(m) => { mapInstanceRef.current = m; }} earthquakeFilters={filters} />
 
       {/* Top bar */}
       <div className="absolute top-0 left-0 right-0 z-20 flex items-center justify-between p-2 sm:p-3">

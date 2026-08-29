@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 import mapboxgl from 'mapbox-gl';
 import 'mapbox-gl/dist/mapbox-gl.css';
 import { useMapStore } from '@/hooks/useStores';
-import { useQuery } from '@/hooks/useQuery';
+import { useQuery, type EarthquakeFilterParams } from '@/hooks/useQuery';
 import type { FaultLine, EarthquakeEvent, Coordinates } from '@geoaware/shared';
 import { getFaultTypeColor, getRiskColor, cn } from '@/utils/helpers';
 
@@ -11,9 +11,10 @@ mapboxgl.accessToken = (import.meta as any).env?.VITE_MAPBOX_TOKEN || '';
 interface MapContainerProps {
   className?: string;
   onMapLoad?: (map: mapboxgl.Map) => void;
+  earthquakeFilters?: EarthquakeFilterParams;
 }
 
-export function MapContainer({ className, onMapLoad }: MapContainerProps) {
+export function MapContainer({ className, onMapLoad, earthquakeFilters }: MapContainerProps) {
   const mapRef = useRef<HTMLDivElement>(null);
   const map = useRef<mapboxgl.Map | null>(null);
   const [mapLoaded, setMapLoaded] = useState(false);
@@ -139,9 +140,18 @@ export function MapContainer({ className, onMapLoad }: MapContainerProps) {
     }
   };
 
-  const addEarthquakeLayer = async (m: mapboxgl.Map) => {
+  const addEarthquakeLayer = async (m: mapboxgl.Map, filters?: EarthquakeFilterParams) => {
     try {
-      const events = await fetchEarthquakes({ minMagnitude: 3.0, limit: 500, endpoint: 'earthquakes/map' });
+      const events = await fetchEarthquakes({
+        minMagnitude: filters?.minMagnitude ?? 3.0,
+        maxMagnitude: filters?.maxMagnitude,
+        startDate: filters?.startDate,
+        endDate: filters?.endDate,
+        source: filters?.source ?? 'ALL',
+        place: filters?.place,
+        limit: 500,
+        endpoint: 'earthquakes/map',
+      });
       if (!events || events.length === 0) return;
       
       const geojson = {
@@ -291,7 +301,7 @@ export function MapContainer({ className, onMapLoad }: MapContainerProps) {
     });
   }, [style]);
 
-  const loadMapLayers = useCallback(async () => {
+  const loadMapLayers = useCallback(async (filters?: EarthquakeFilterParams) => {
     const m = map.current;
     if (!m || !m.isStyleLoaded()) return;
     if (showFaults) {
@@ -302,7 +312,7 @@ export function MapContainer({ className, onMapLoad }: MapContainerProps) {
       removeSourceSafe(m, 'faults');
     }
     if (showEarthquakes) {
-      await addEarthquakeLayer(m);
+      await addEarthquakeLayer(m, filters);
     } else {
       removeLayer(m, 'earthquakes-cluster');
       removeLayer(m, 'earthquakes-cluster-count');
@@ -311,15 +321,24 @@ export function MapContainer({ className, onMapLoad }: MapContainerProps) {
     }
   }, [showFaults, showEarthquakes]);
 
+  // Reload map layers on map load / style change
   useEffect(() => {
     if (!mapLoaded) return;
     const m = map.current;
     if (!m) return;
-    if (m.isStyleLoaded()) { loadMapLayers(); } else {
-      const handler = () => { if (m.isStyleLoaded()) { loadMapLayers(); m.off('style.load', handler); } };
+    if (m.isStyleLoaded()) { loadMapLayers(earthquakeFilters); } else {
+      const handler = () => { if (m.isStyleLoaded()) { loadMapLayers(earthquakeFilters); m.off('style.load', handler); } };
       m.on('style.load', handler);
     }
   }, [mapLoaded, loadMapLayers]);
+
+  // Re-fetch earthquake layer when filters change
+  useEffect(() => {
+    if (!mapLoaded || !showEarthquakes) return;
+    const m = map.current;
+    if (!m || !m.isStyleLoaded()) return;
+    addEarthquakeLayer(m, earthquakeFilters);
+  }, [earthquakeFilters, mapLoaded, showEarthquakes]);
 
   return (
     <div 

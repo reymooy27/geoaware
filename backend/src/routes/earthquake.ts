@@ -180,8 +180,12 @@ earthquakeRoutes.get('/map', async (c) => {
   try {
     const params = z.object({
       minMagnitude: z.coerce.number().min(0).max(10).default(3.0),
-      limit: z.coerce.number().min(1).max(500).default(500),
+      maxMagnitude: z.coerce.number().min(0).max(10).optional(),
+      startDate: z.string().datetime().optional(),
+      endDate: z.string().datetime().optional(),
       source: z.enum(['BMKG', 'USGS', 'ALL']).default('ALL'),
+      place: z.string().optional(),
+      limit: z.coerce.number().min(1).max(500).default(500),
     }).parse(c.req.query());
 
     const key = `map:${JSON.stringify(params)}`;
@@ -189,7 +193,16 @@ earthquakeRoutes.get('/map', async (c) => {
     if (cached) return c.json(cached);
 
     const where: any = { magnitude: { gte: params.minMagnitude } };
+    if (params.maxMagnitude) where.magnitude.lte = params.maxMagnitude;
+    if (params.startDate || params.endDate) {
+      where.time = {};
+      if (params.startDate) where.time.gte = new Date(params.startDate);
+      if (params.endDate) where.time.lte = new Date(params.endDate);
+    }
     if (params.source !== 'ALL') where.source = params.source;
+    if (params.place) {
+      where.place = { contains: params.place, mode: 'insensitive' };
+    }
 
     const events = await prisma.earthquakeEvent.findMany({
       where,
