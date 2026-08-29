@@ -6,7 +6,7 @@ import { AppError } from '../middleware/errorHandler.js';
 import { readJson } from '../utils/http.js';
 import { calculateRisk } from '../services/riskCalculator.js';
 import { getNearestFault } from '../services/faultService.js';
-import { getSoilTypeAtLocation } from '../services/soilService.js';
+import { getSoilTypeAtLocation, getAllSoilTypes } from '../services/soilService.js';
 
 export const riskRoutes = new Hono<Env>();
 
@@ -63,6 +63,11 @@ riskRoutes.get('/history/:userId', async (c) => {
   });
 
   return c.json(assessments);
+});
+
+riskRoutes.get('/soil-types', async (c) => {
+  const soilTypes = await getAllSoilTypes();
+  return c.json(soilTypes);
 });
 
 riskRoutes.get('/building-checklist', (c) =>

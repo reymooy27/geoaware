@@ -141,7 +141,7 @@ export function MapContainer({ className, onMapLoad }: MapContainerProps) {
 
   const addEarthquakeLayer = async (m: mapboxgl.Map) => {
     try {
-      const events = await fetchEarthquakes({ minMagnitude: 3.0, limit: 500 });
+      const events = await fetchEarthquakes({ minMagnitude: 3.0, limit: 500, endpoint: 'earthquakes/map' });
       if (!events || events.length === 0) return;
       
       const geojson = {
