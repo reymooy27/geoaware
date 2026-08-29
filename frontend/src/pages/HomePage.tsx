@@ -1,11 +1,14 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { Link } from 'react-router-dom';
+import mapboxgl from 'mapbox-gl';
 import type { Map as MapboxMap } from 'mapbox-gl';
 import { MapContainer } from '../components/Map/MapContainer';
 import { useMapStore, useAlertStore, useUserStore } from '../hooks/useStores';
-import { useQuery } from '../hooks/useQuery';
+import { useQuery, type EarthquakeFilterParams } from '../hooks/useQuery';
 import { getCurrentLocation } from '../utils/helpers';
 import { cn, formatRelativeTime, getRiskColor } from '../utils/helpers';
+import { EarthquakeFilterPanel } from '../components/Earthquake/EarthquakeFilterPanel';
+import { EarthquakeHistoryList } from '../components/Earthquake/EarthquakeHistoryList';
 import {
   ShieldCheck, AlertTriangle, MapPin, Download, Settings, Target,
   Globe, Clock, Menu, X, Navigation, ChevronRight, Locate
@@ -19,6 +22,12 @@ export function HomePage() {
   const [recentEarthquakes, setRecentEarthquakes] = useState<any[]>([]);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [eqExpanded, setEqExpanded] = useState(false);
+  const [filterOpen, setFilterOpen] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [filters, setFilters] = useState<EarthquakeFilterParams>({
+    minMagnitude: 0,
+    source: 'ALL',
+  });
   const [userLoc, setUserLoc] = useState<{ lat: number; lng: number } | null>(null);
   const mapInstanceRef = useRef<MapboxMap | null>(null);
 
@@ -32,22 +41,67 @@ export function HomePage() {
     }
   }, [setLocation]);
 
-  const loadRecentEarthquakes = async () => {
+  const loadRecentEarthquakes = useCallback(async (filterOverrides?: EarthquakeFilterParams) => {
     try {
-      const data = await fetchEarthquakes({ minMagnitude: 3.0, limit: 10 });
+      const params = { ...filters, ...filterOverrides, limit: 10, minMagnitude: filterOverrides?.minMagnitude ?? filters.minMagnitude ?? 0 };
+      const data = await fetchEarthquakes(params);
       setRecentEarthquakes(data);
       data.forEach((e: any) => addEvent(e));
     } catch (error) {
       console.error('Failed to load earthquakes:', error);
     }
-  };
+  }, [filters, fetchEarthquakes, addEvent]);
+
+  const handleFilterChange = useCallback((newFilters: EarthquakeFilterParams) => {
+    setFilters(newFilters);
+    loadRecentEarthquakes(newFilters);
+  }, [loadRecentEarthquakes]);
+
+  const userMarkerRef = useRef<mapboxgl.Marker | null>(null);
 
   const handleLocateUser = () => {
-    if (navigator.geolocation) {
-      getCurrentLocation().then(pos => {
+    if (!navigator.geolocation) return;
+    getCurrentLocation()
+      .then(pos => {
         setUserLoc({ lat: pos.latitude, lng: pos.longitude });
-      }).catch(() => {});
-    }
+        setLocation({ coordinates: { latitude: pos.latitude, longitude: pos.longitude }, accuracy: pos.accuracy, timestamp: Date.now(), source: 'gps' });
+
+        if (mapInstanceRef.current) {
+          mapInstanceRef.current.flyTo({
+            center: [pos.longitude, pos.latitude],
+            zoom: 12,
+            essential: true,
+          });
+
+          // Remove old marker
+          if (userMarkerRef.current) {
+            userMarkerRef.current.remove();
+          }
+
+          // Add user marker
+          const el = document.createElement('div');
+          el.className = 'user-location-marker';
+          el.style.cssText = `
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            background: #3b82f6;
+            border: 3px solid white;
+            box-shadow: 0 0 10px rgba(59,130,246,0.6);
+          `;
+
+          userMarkerRef.current = new (mapboxgl as any).Marker({ element: el })
+            .setLngLat([pos.longitude, pos.latitude])
+            .setPopup(
+              new (mapboxgl as any).Popup({ closeButton: false, offset: 15 })
+                .setHTML('<div style="padding:4px 8px;font-size:12px;font-weight:600;">📍 Lokasi Anda</div>')
+            )
+            .addTo(mapInstanceRef.current);
+        }
+      })
+      .catch(err => {
+        console.error('Gagal mendapatkan lokasi:', err);
+      });
   };
 
   const handleFocusEarthquake = (eq: any) => {
@@ -83,6 +137,16 @@ export function HomePage() {
         </button>
 
         <div className="flex items-center gap-2">
+          {/* Filter Panel */}
+          <div className="relative">
+            <EarthquakeFilterPanel
+              filters={filters}
+              onFilterChange={handleFilterChange}
+              isOpen={filterOpen}
+              onToggle={() => { setFilterOpen(!filterOpen); setHistoryOpen(false); }}
+            />
+          </div>
+
           <div className="flex items-center gap-1 bg-white/90 dark:bg-gray-800/90 backdrop-blur-sm rounded-xl p-1.5 shadow-lg">
             <button
               onClick={() => toggleLayer('faults')}
@@ -114,7 +178,7 @@ export function HomePage() {
         </div>
       </div>
 
-      {/* Sidebar backdrop: klik di luar sidebar menutupnya */}
+      {/* Sidebar backdrop */}
       {sidebarOpen && (
         <div
           className="absolute inset-0 z-[25] bg-black/40 transition-opacity"
@@ -148,19 +212,32 @@ export function HomePage() {
       )}
 
       {/* Bottom: earthquake card — center di mobile, bottom-right di layar besar */}
-      <div className="absolute z-20 inset-x-3 bottom-4 sm:inset-x-auto sm:right-4 sm:w-72">
-        <div className="bg-white/90 dark:bg-gray-800/90 backdrop-blur-sm rounded-xl shadow-lg overflow-hidden">
-          <div className="flex items-center justify-between px-3 py-2 border-b border-gray-200/50 dark:border-gray-700/50">
-            <div className="flex items-center gap-1.5">
-              <AlertTriangle className="w-3.5 h-3.5 text-red-500" />
-              <span className="text-xs font-semibold text-gray-900 dark:text-gray-100">Gempa Terbaru</span>
-              <span className="text-[10px] bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 px-1.5 py-0.5 rounded-full font-medium">{recentEarthquakes.length}</span>
+      <div className="absolute z-20 inset-x-3 bottom-4 sm:inset-x-auto sm:right-4 sm:w-80">
+        <div className="bg-gray-900/95 backdrop-blur-md rounded-xl shadow-2xl overflow-hidden border border-gray-700/50">
+          {/* Header */}
+          <div className="flex items-center justify-between px-3.5 py-2.5 bg-gray-800/80 border-b border-gray-700/50">
+            <div className="flex items-center gap-2">
+              <div className="w-6 h-6 rounded-md bg-red-500/20 flex items-center justify-center">
+                <AlertTriangle className="w-3.5 h-3.5 text-red-400" />
+              </div>
+              <span className="text-xs font-bold text-gray-100 tracking-wide">Gempa Terbaru</span>
+              <span className="text-[10px] bg-red-500/20 text-red-400 px-1.5 py-0.5 rounded-full font-bold tabular-nums">{recentEarthquakes.length}</span>
             </div>
-            <button onClick={() => setEqExpanded(!eqExpanded)} className="text-[10px] text-primary-600 dark:text-primary-400 font-medium hover:underline">
-              {eqExpanded ? 'Tutup' : 'Lihat semua'}
-            </button>
+            <div className="flex items-center gap-1">
+              <button
+                onClick={() => { setHistoryOpen(!historyOpen); setFilterOpen(false); }}
+                className="text-[10px] text-blue-400 font-semibold hover:text-blue-300 transition-colors"
+              >
+                {historyOpen ? 'Tutup' : 'Riwayat'}
+              </button>
+              <span className="text-gray-600">·</span>
+              <button onClick={() => setEqExpanded(!eqExpanded)} className="text-[10px] text-blue-400 font-semibold hover:text-blue-300 transition-colors">
+                {eqExpanded ? 'Tutup' : 'Semua'}
+              </button>
+            </div>
           </div>
-          <div className={cn('divide-y divide-gray-100/50 dark:divide-gray-700/50 overflow-y-auto transition-all', eqExpanded ? 'max-h-[50vh]' : 'max-h-[180px]')}>
+          {/* List */}
+          <div className={cn('overflow-y-auto transition-all scrollbar-thin', eqExpanded ? 'max-h-[55vh]' : 'max-h-[200px]')}>
             {recentEarthquakes.map((eq) => (
               <div
                 key={eq.id}
@@ -168,32 +245,60 @@ export function HomePage() {
                 tabIndex={0}
                 onClick={() => handleFocusEarthquake(eq)}
                 onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') handleFocusEarthquake(eq); }}
-                className="px-3 py-2 hover:bg-gray-50 dark:hover:bg-gray-700/30 transition-colors cursor-pointer focus:outline-none focus:bg-gray-50 dark:focus:bg-gray-700/30"
+                className="px-3.5 py-2.5 hover:bg-gray-800/60 active:bg-gray-700/60 transition-colors cursor-pointer border-b border-gray-800/60 last:border-b-0 focus:outline-none focus:bg-gray-800/60"
               >
-                <div className="flex items-center justify-between gap-2">
-                  <p className="text-xs font-medium text-gray-900 dark:text-gray-100 truncate flex-1 min-w-0">{eq.place}</p>
-                  <span className={cn('flex-shrink-0 text-[10px] font-bold px-1.5 py-0.5 rounded',
-                    eq.magnitude >= 7 ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400' :
-                    eq.magnitude >= 5 ? 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400' :
-                    'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400'
-                  )}>{eq.magnitude.toFixed(1)}</span>
-                </div>
-                <div className="flex items-center gap-2 mt-0.5 text-[10px] text-gray-500 dark:text-gray-400">
-                  <span>{eq.depth} km</span>
-                  <span>·</span>
-                  <span>{formatRelativeTime(eq.time)}</span>
+                <div className="flex items-start gap-2.5">
+                  {/* Magnitude badge */}
+                  <div className={cn(
+                    'flex-shrink-0 min-w-[42px] h-9 rounded-lg flex items-center justify-center text-[13px] font-black tabular-nums',
+                    eq.magnitude >= 7 ? 'bg-red-600/20 text-red-400 ring-1 ring-red-500/30' :
+                    eq.magnitude >= 6 ? 'bg-red-500/15 text-red-400 ring-1 ring-red-500/20' :
+                    eq.magnitude >= 5 ? 'bg-orange-500/15 text-orange-400 ring-1 ring-orange-500/25' :
+                    eq.magnitude >= 4 ? 'bg-amber-500/15 text-amber-400 ring-1 ring-amber-500/20' :
+                    'bg-emerald-500/15 text-emerald-400 ring-1 ring-emerald-500/20'
+                  )}>
+                    {eq.magnitude.toFixed(1)}
+                  </div>
+                  {/* Info */}
+                  <div className="flex-1 min-w-0">
+                    <p className="text-[11px] font-semibold text-gray-100 truncate leading-tight">{eq.place}</p>
+                    <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+                      <span className="text-[9px] text-gray-400 tabular-nums">{eq.depth} km</span>
+                      <span className="text-gray-600">·</span>
+                      <span className="text-[9px] text-gray-400">{formatRelativeTime(eq.time)}</span>
+                      {eq.source && (
+                        <>
+                          <span className="text-gray-600">·</span>
+                          <span className={cn(
+                            'text-[9px] font-bold uppercase tracking-wider',
+                            eq.source === 'BMKG' ? 'text-sky-400' : eq.source === 'USGS' ? 'text-violet-400' : 'text-gray-400'
+                          )}>{eq.source}</span>
+                        </>
+                      )}
+                      {eq.tsunami && (
+                        <span className="text-[9px] bg-sky-500/20 text-sky-400 px-1 rounded font-semibold">🌊</span>
+                      )}
+                    </div>
+                  </div>
                 </div>
               </div>
             ))}
             {recentEarthquakes.length === 0 && (
-              <div className="px-3 py-4 text-center">
-                <Navigation className="w-5 h-5 text-gray-300 dark:text-gray-600 mx-auto mb-1 animate-pulse" />
-                <p className="text-[10px] text-gray-500 dark:text-gray-400">Memuat...</p>
+              <div className="px-3 py-6 text-center">
+                <Navigation className="w-5 h-5 text-gray-600 mx-auto mb-1.5 animate-pulse" />
+                <p className="text-[10px] text-gray-500">Memuat data gempa...</p>
               </div>
             )}
           </div>
         </div>
       </div>
+
+      {/* History List Panel */}
+      <EarthquakeHistoryList
+        isOpen={historyOpen}
+        onToggle={() => { setHistoryOpen(!historyOpen); setFilterOpen(false); }}
+        onFocusEarthquake={handleFocusEarthquake}
+      />
     </div>
   );
 }

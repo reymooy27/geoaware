@@ -1,9 +1,32 @@
 import { createContext, useContext, useState, useCallback, ReactNode } from 'react';
 import type { FaultLine, EarthquakeEvent, SoilType, RiskAssessment, EvacuationRoute, AssemblyPoint } from '@geoaware/shared';
 
+export interface EarthquakeFilterParams {
+  minMagnitude?: number;
+  maxMagnitude?: number;
+  startDate?: string;
+  endDate?: string;
+  source?: 'BMKG' | 'USGS' | 'ALL';
+  place?: string;
+  latitude?: number;
+  longitude?: number;
+  radiusKm?: number;
+  limit?: number;
+  offset?: number;
+  endpoint?: 'earthquakes' | 'earthquakes/map';
+}
+
+export interface EarthquakeQueryResult {
+  events: EarthquakeEvent[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
 interface QueryContextType {
   fetchFaults: (params?: { latitude?: number; longitude?: number; radiusKm?: number }) => Promise<FaultLine[]>;
-  fetchEarthquakes: (params?: { minMagnitude?: number; limit?: number }) => Promise<EarthquakeEvent[]>;
+  fetchEarthquakes: (params?: EarthquakeFilterParams) => Promise<EarthquakeEvent[]>;
+  fetchEarthquakesPaginated: (params?: EarthquakeFilterParams) => Promise<EarthquakeQueryResult>;
   fetchSoilTypes: () => Promise<SoilType[]>;
   assessRisk: (latitude: number, longitude: number, address?: string) => Promise<RiskAssessment>;
   fetchEvacuationRoutes: (latitude: number, longitude: number, radiusKm?: number) => Promise<EvacuationRoute[]>;
@@ -38,14 +61,24 @@ export function QueryProvider({ children }: { children: ReactNode }) {
     }
   }, [setLoadingKey]);
 
-  const fetchEarthquakes = useCallback(async (params?: { minMagnitude?: number; limit?: number }) => {
+  const fetchEarthquakes = useCallback(async (params?: EarthquakeFilterParams) => {
     setLoadingKey('earthquakes', true);
     try {
       const searchParams = new URLSearchParams();
-      if (params?.minMagnitude) searchParams.set('minMagnitude', params.minMagnitude.toString());
+      if (params?.minMagnitude != null) searchParams.set('minMagnitude', params.minMagnitude.toString());
+      if (params?.maxMagnitude != null) searchParams.set('maxMagnitude', params.maxMagnitude.toString());
+      if (params?.startDate) searchParams.set('startDate', params.startDate);
+      if (params?.endDate) searchParams.set('endDate', params.endDate);
+      if (params?.source) searchParams.set('source', params.source);
+      if (params?.place) searchParams.set('place', params.place);
+      if (params?.latitude != null) searchParams.set('latitude', params.latitude.toString());
+      if (params?.longitude != null) searchParams.set('longitude', params.longitude.toString());
+      if (params?.radiusKm != null) searchParams.set('radiusKm', params.radiusKm.toString());
       if (params?.limit) searchParams.set('limit', params.limit.toString());
-      
-      const response = await fetch(`${API_BASE}/earthquakes?${searchParams}`);
+      if (params?.offset != null) searchParams.set('offset', params.offset.toString());
+
+      const endpoint = params?.endpoint ?? 'earthquakes';
+      const response = await fetch(`${API_BASE}/${endpoint}?${searchParams}`);
       if (!response.ok) throw new Error('Failed to fetch earthquakes');
       const data = await response.json();
       return data.events || data;
@@ -54,10 +87,35 @@ export function QueryProvider({ children }: { children: ReactNode }) {
     }
   }, [setLoadingKey]);
 
+  const fetchEarthquakesPaginated = useCallback(async (params?: EarthquakeFilterParams): Promise<EarthquakeQueryResult> => {
+    setLoadingKey('earthquakes', true);
+    try {
+      const searchParams = new URLSearchParams();
+      if (params?.minMagnitude != null) searchParams.set('minMagnitude', params.minMagnitude.toString());
+      if (params?.maxMagnitude != null) searchParams.set('maxMagnitude', params.maxMagnitude.toString());
+      if (params?.startDate) searchParams.set('startDate', params.startDate);
+      if (params?.endDate) searchParams.set('endDate', params.endDate);
+      if (params?.source) searchParams.set('source', params.source);
+      if (params?.place) searchParams.set('place', params.place);
+      if (params?.latitude != null) searchParams.set('latitude', params.latitude.toString());
+      if (params?.longitude != null) searchParams.set('longitude', params.longitude.toString());
+      if (params?.radiusKm != null) searchParams.set('radiusKm', params.radiusKm.toString());
+      if (params?.limit) searchParams.set('limit', params.limit.toString());
+      if (params?.offset != null) searchParams.set('offset', params.offset.toString());
+
+      const endpoint = params?.endpoint ?? 'earthquakes';
+      const response = await fetch(`${API_BASE}/${endpoint}?${searchParams}`);
+      if (!response.ok) throw new Error('Failed to fetch earthquakes');
+      return response.json();
+    } finally {
+      setLoadingKey('earthquakes', false);
+    }
+  }, [setLoadingKey]);
+
   const fetchSoilTypes = useCallback(async () => {
     setLoadingKey('soil', true);
     try {
-      const response = await fetch(`${API_BASE}/faults/soil-types`);
+      const response = await fetch(`${API_BASE}/risk/soil-types`);
       if (!response.ok) throw new Error('Failed to fetch soil types');
       return response.json();
     } finally {
@@ -103,9 +161,10 @@ export function QueryProvider({ children }: { children: ReactNode }) {
   }, [setLoadingKey]);
 
   return (
-    <QueryContext.Provider value={{
+    <QueryContext.Provider      value={{
       fetchFaults,
       fetchEarthquakes,
+      fetchEarthquakesPaginated,
       fetchSoilTypes,
       assessRisk,
       fetchEvacuationRoutes,

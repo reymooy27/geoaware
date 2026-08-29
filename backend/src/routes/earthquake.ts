@@ -8,12 +8,34 @@ import { fetchBMKGEvents, fetchUSGSEvents } from '../services/earthquakeProvider
 /** Convert PostGIS WKB bytes from Prisma to {longitude, latitude}. */
 function parseGeometry(buf: Uint8Array | null): { longitude: number; latitude: number } | null {
   if (!buf) return null;
-  // PostGIS WKB with SRID: byte0=order, bytes1-4=type+flags, bytes5-8=SRID(LE), bytes9-16=lng, bytes17-24=lat
   if (buf.length < 25) return null;
   const view = new DataView(buf.buffer, buf.byteOffset, buf.byteLength);
   const lng = view.getFloat64(9, true);
   const lat = view.getFloat64(17, true);
   return { longitude: lng, latitude: lat };
+}
+
+/** Simple in-memory cache (per-isolate, survives warm requests). */
+const cache = new Map<string, { data: any; expires: number }>();
+const CACHE_TTL = 30_000; // 30 seconds
+
+function getCache(key: string): any | null {
+  const entry = cache.get(key);
+  if (!entry) return null;
+  if (Date.now() > entry.expires) {
+    cache.delete(key);
+    return null;
+  }
+  return entry.data;
+}
+
+function setCache(key: string, data: any): void {
+  cache.set(key, { data, expires: Date.now() + CACHE_TTL });
+}
+
+/** Build cache key from query params. */
+function cacheKey(params: any): string {
+  return JSON.stringify(params);
 }
 
 export const earthquakeRoutes = new Hono<Env>();
@@ -27,79 +49,70 @@ const querySchema = z.object({
   longitude: z.coerce.number().min(-180).max(180).optional(),
   radiusKm: z.coerce.number().min(1).max(1000).optional(),
   source: z.enum(['BMKG', 'USGS', 'ALL']).default('ALL'),
-  limit: z.coerce.number().min(1).max(1000).default(50),
+  place: z.string().optional(),
+  limit: z.coerce.number().min(1).max(500).default(20),
   offset: z.coerce.number().min(0).default(0),
 });
 
 earthquakeRoutes.get('/', async (c) => {
   const params = querySchema.parse(c.req.query());
 
-  const where: any = {
-    magnitude: { gte: params.minMagnitude },
-  };
+  const key = cacheKey(params);
+  const cached = getCache(key);
+  if (cached) return c.json(cached);
 
-  if (params.maxMagnitude) {
-    where.magnitude.lte = params.maxMagnitude;
+  try {
+    const where: any = { magnitude: { gte: params.minMagnitude } };
+    if (params.maxMagnitude) where.magnitude.lte = params.maxMagnitude;
+    if (params.startDate || params.endDate) {
+      where.time = {};
+      if (params.startDate) where.time.gte = new Date(params.startDate);
+      if (params.endDate) where.time.lte = new Date(params.endDate);
+    }
+    if (params.source !== 'ALL') where.source = params.source;
+    if (params.place) {
+      where.place = { contains: params.place, mode: 'insensitive' };
+    }
+
+    let result: any;
+
+    if (params.latitude && params.longitude && params.radiusKm) {
+      const placeFilter = params.place ? `AND place ILIKE '%${params.place.replace(/'/g, "''")}%'` : '';
+      const events = await prisma.$queryRawUnsafe(`
+        SELECT * FROM "earthquake_events"
+        WHERE ST_DWithin("location", ST_SetSRID(ST_MakePoint($1, $2), 4326)::geography, $3)
+        AND magnitude >= $4
+        ${params.maxMagnitude ? 'AND magnitude <= $5' : ''}
+        ${params.source !== 'ALL' ? `AND source = '${params.source}'` : ''}
+        ${placeFilter}
+        ORDER BY time DESC
+        LIMIT $${params.maxMagnitude ? 6 : 5} OFFSET $${params.maxMagnitude ? 7 : 6}
+      `, params.longitude, params.latitude, params.radiusKm * 1000, params.minMagnitude,
+        ...(params.maxMagnitude ? [params.maxMagnitude] : []), params.limit, params.offset) as any[];
+
+      result = {
+        events: events.map(e => ({ ...e, location: parseGeometry(e.location) })),
+        total: events.length,
+        limit: params.limit,
+        offset: params.offset,
+      };
+    } else {
+      const [events, total] = await Promise.all([
+        prisma.earthquakeEvent.findMany({ where, orderBy: { time: 'desc' }, take: params.limit, skip: params.offset }),
+        prisma.earthquakeEvent.count({ where }),
+      ]);
+      result = {
+        events: events.map(e => ({ ...e, location: parseGeometry(e.location as unknown as Uint8Array) })),
+        total, limit: params.limit, offset: params.offset,
+      };
+    }
+
+    setCache(key, result);
+    return c.json(result);
+  } catch (err) {
+    console.error('[earthquakes] query failed:', err);
+    throw new AppError(500, 'Failed to fetch earthquakes', 'EARTHQUAKE_QUERY_FAILED');
   }
-
-  if (params.startDate || params.endDate) {
-    where.time = {};
-    if (params.startDate) where.time.gte = new Date(params.startDate);
-    if (params.endDate) where.time.lte = new Date(params.endDate);
-  }
-
-  if (params.source !== 'ALL') {
-    where.source = params.source;
-  }
-
-  if (params.latitude && params.longitude && params.radiusKm) {
-    // Spatial filtering via raw SQL
-    const events = await prisma.$queryRawUnsafe(`
-      SELECT * FROM "earthquake_events"
-      WHERE ST_DWithin(
-        "location",
-        ST_SetSRID(ST_MakePoint($1, $2), 4326)::geography,
-        $3
-      )
-      AND magnitude >= $4
-      ${params.maxMagnitude ? 'AND magnitude <= $5' : ''}
-      ${params.source !== 'ALL' ? `AND source = '${params.source}'` : ''}
-      ORDER BY time DESC
-      LIMIT $${params.maxMagnitude ? 6 : 5} OFFSET $${params.maxMagnitude ? 7 : 6}
-    `,
-      params.longitude,
-      params.latitude,
-      params.radiusKm * 1000,
-      params.minMagnitude,
-      ...(params.maxMagnitude ? [params.maxMagnitude] : []),
-      params.limit,
-      params.offset
-    ) as any[];
-
-    return c.json({
-      events: events.map(e => ({ ...e, location: parseGeometry(e.location) })),
-      total: events.length,
-      limit: params.limit,
-      offset: params.offset,
-    });
-  }
-
-  const [events, total] = await Promise.all([
-    prisma.earthquakeEvent.findMany({
-      where,
-      orderBy: { time: 'desc' },
-      take: params.limit,
-      skip: params.offset,
-    }),
-    prisma.earthquakeEvent.count({ where }),
-  ]);
-
-  const formatted = events.map(e => ({
-    ...e,
-    location: parseGeometry(e.location as unknown as Uint8Array),
-  }));
-
-  return c.json({ events: formatted, total, limit: params.limit, offset: params.offset });
 });
 
 earthquakeRoutes.get('/latest', async (c) => {
@@ -161,4 +174,52 @@ earthquakeRoutes.get('/stats', async (c) => {
   ]);
 
   return c.json({ byMagnitude, bySource, byDay });
+});
+
+earthquakeRoutes.get('/map', async (c) => {
+  try {
+    const params = z.object({
+      minMagnitude: z.coerce.number().min(0).max(10).default(3.0),
+      limit: z.coerce.number().min(1).max(500).default(500),
+      source: z.enum(['BMKG', 'USGS', 'ALL']).default('ALL'),
+    }).parse(c.req.query());
+
+    const key = `map:${JSON.stringify(params)}`;
+    const cached = getCache(key);
+    if (cached) return c.json(cached);
+
+    const where: any = { magnitude: { gte: params.minMagnitude } };
+    if (params.source !== 'ALL') where.source = params.source;
+
+    const events = await prisma.earthquakeEvent.findMany({
+      where,
+      orderBy: { time: 'desc' },
+      take: params.limit,
+      select: {
+        id: true,
+        magnitude: true,
+        place: true,
+        time: true,
+        source: true,
+        location: true,
+      },
+    });
+
+    const result = {
+      events: events.map(e => ({
+        id: e.id,
+        magnitude: e.magnitude,
+        place: e.place,
+        time: e.time,
+        source: e.source,
+        location: parseGeometry(e.location as unknown as Uint8Array),
+      })),
+    };
+
+    setCache(key, result);
+    return c.json(result);
+  } catch (err) {
+    console.error('[earthquakes/map] query failed:', err);
+    throw new AppError(500, 'Failed to fetch map earthquakes', 'EARTHQUAKE_MAP_QUERY_FAILED');
+  }
 });
