@@ -212,7 +212,7 @@ export function HomePage() {
       )}
 
       {/* Bottom: earthquake card — center di mobile, bottom-right di layar besar */}
-      <div className="absolute z-20 inset-x-2 bottom-2 sm:inset-x-auto sm:right-4 sm:bottom-4 sm:w-80">
+      <div className="absolute z-10 inset-x-2 bottom-2 sm:inset-x-auto sm:right-4 sm:bottom-4 sm:w-80">
         <div className="bg-gray-900/95 backdrop-blur-md rounded-xl shadow-2xl overflow-hidden border border-gray-700/50">
           {/* Header */}
           <div className="flex items-center justify-between px-3.5 py-2.5 bg-gray-800/80 border-b border-gray-700/50">
