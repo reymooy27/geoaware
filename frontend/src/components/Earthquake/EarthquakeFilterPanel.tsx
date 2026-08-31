@@ -454,7 +454,7 @@ export function EarthquakeFilterPanel({
           </div>
 
           {/* Footer */}
-          <div className="px-4 py-3 border-t border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-750">
+          <div className="px-4 py-3 border-t border-gray-200 dark:border-gray-700 bg-gray-100 dark:bg-gray-750">
             <div className="flex items-center justify-between">
               <span className="text-[10px] text-gray-500 dark:text-gray-400">
                 {totalResults.toLocaleString('id-ID')} hasil ditemukan
@@ -492,7 +492,7 @@ function FilterSection({
     <div className="border border-gray-200 dark:border-gray-600 rounded-lg overflow-hidden">
       <button
         onClick={onToggle}
-        className="w-full flex items-center justify-between px-3 py-2 bg-gray-50 dark:bg-gray-750 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+        className="w-full flex items-center justify-between px-3 py-2 bg-gray-100 dark:bg-gray-750 dark:hover:bg-gray-700 transition-colors"
       >
         <div className="flex items-center gap-2 text-xs font-medium text-gray-700 dark:text-gray-300">
           {icon}
