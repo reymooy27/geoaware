@@ -76,7 +76,13 @@ earthquakeRoutes.get('/', async (c) => {
   const cached = getCache(key);
   if (cached) return c.json(cached);
   try {
-    const path = `earthquake_events?select=*&order=time.desc&limit=${params.limit}&offset=${params.offset}&magnitude=gte.${params.minMagnitude}`;
+    const filters: string[] = [`magnitude=gte.${params.minMagnitude}`];
+    if (params.maxMagnitude != null) filters.push(`magnitude=lte.${params.maxMagnitude}`);
+    if (params.startDate) filters.push(`time=gte.${params.startDate}`);
+    if (params.endDate) filters.push(`time=lte.${params.endDate}`);
+    if (params.source && params.source !== 'ALL') filters.push(`source=eq.${params.source}`);
+    if (params.place) filters.push(`place=ilike.*${params.place}*`);
+    const path = `earthquake_events?select=*&order=time.desc&limit=${params.limit}&offset=${params.offset}&${filters.join('&')}`;
     const events = await query(path);
     const result = { events: events.map((e: any) => ({ ...e, location: parseGeometryHex(e.location) })), total: events.length, limit: params.limit, offset: params.offset };
     setCache(key, result);
@@ -114,13 +120,26 @@ earthquakeRoutes.get('/stats', async (c) => {
 });
 
 earthquakeRoutes.get('/map', async (c) => {
-  const params = z.object({ minMagnitude: z.coerce.number().min(0).max(10).default(3.0), source: z.enum(['BMKG','USGS','ALL']).default('ALL'), place: z.string().optional(), limit: z.coerce.number().min(1).max(500).default(500) }).parse(c.req.query());
+  const params = z.object({
+    minMagnitude: z.coerce.number().min(0).max(10).default(3.0),
+    maxMagnitude: z.coerce.number().min(0).max(10).optional(),
+    startDate: z.string().datetime().optional(),
+    endDate: z.string().datetime().optional(),
+    source: z.enum(['BMKG','USGS','ALL']).default('ALL'),
+    place: z.string().optional(),
+    limit: z.coerce.number().min(1).max(500).default(500)
+  }).parse(c.req.query());
   const key = `map:${JSON.stringify(params)}`;
   const cached = getCache(key);
   if (cached) return c.json(cached);
   try {
-    let path = `earthquake_events?select=id,magnitude,place,time,source,location&order=time.desc&limit=${params.limit}&magnitude=gte.${params.minMagnitude}`;
-    if (params.source !== 'ALL') path += `&source=eq.${params.source}`;
+    const filters = [`magnitude=gte.${params.minMagnitude}`];
+    if (params.maxMagnitude != null) filters.push(`magnitude=lte.${params.maxMagnitude}`);
+    if (params.startDate) filters.push(`time=gte.${params.startDate}`);
+    if (params.endDate) filters.push(`time=lte.${params.endDate}`);
+    if (params.source !== 'ALL') filters.push(`source=eq.${params.source}`);
+    if (params.place) filters.push(`place=ilike.*${params.place}*`);
+    const path = `earthquake_events?select=id,magnitude,place,time,source,location&order=time.desc&limit=${params.limit}&${filters.join('&')}`;
     const events = await query(path);
     const result = { events: events.map((e: any) => ({ id: e.id, magnitude: e.magnitude, place: e.place, time: e.time, source: e.source, location: parseGeometryHex(e.location) })) };
     setCache(key, result);

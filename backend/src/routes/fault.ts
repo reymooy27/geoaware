@@ -47,7 +47,18 @@ faultRoutes.get('/', async (c) => {
     LIMIT $${paramIndex++} OFFSET $${paramIndex}
   `, ...values, params.limit, params.offset) as any[];
 
-  return c.json(faults);
+  const result = faults.map((fault: any) => ({
+    id: fault.id,
+    name: fault.name,
+    type: fault.type.toLowerCase(),
+    geometry: fault.geometry,
+    maxMagnitude: fault.maxMagnitude,
+    activityLevel: fault.activityLevel,
+    slipRate: fault.slipRate,
+    lastEvent: fault.lastEvent?.toISOString(),
+  }));
+
+  return c.json(result);
 });
 
 faultRoutes.get('/nearby/:latitude/:longitude', async (c) => {
@@ -78,7 +89,19 @@ faultRoutes.get('/nearby/:latitude/:longitude', async (c) => {
     LIMIT $4
   `, longitude, latitude, parseFloat(radiusKm) * 1000, parseInt(limit)) as any[];
 
-  return c.json(faults);
+  const result = faults.map((fault: any) => ({
+    id: fault.id,
+    name: fault.name,
+    type: fault.type.toLowerCase(),
+    geometry: fault.geometry,
+    maxMagnitude: fault.maxMagnitude,
+    activityLevel: fault.activityLevel,
+    slipRate: fault.slipRate,
+    lastEvent: fault.lastEvent?.toISOString(),
+    distanceKm: fault.distance_km,
+  }));
+
+  return c.json(result);
 });
 
 faultRoutes.get('/:faultId', async (c) => {
@@ -98,5 +121,17 @@ faultRoutes.get('/:faultId', async (c) => {
     throw new AppError(404, 'Fault line not found', 'FAULT_NOT_FOUND');
   }
 
-  return c.json(fault[0]);
+  const f = fault[0];
+  return c.json({
+    id: f.id,
+    name: f.name,
+    type: f.type.toLowerCase(),
+    geometry: f.geometry,
+    maxMagnitude: f.maxMagnitude,
+    activityLevel: f.activityLevel,
+    slipRate: f.slipRate,
+    lastEvent: f.lastEvent?.toISOString(),
+    source: f.source,
+    metadata: f.metadata,
+  });
 });
