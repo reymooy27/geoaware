@@ -12,6 +12,10 @@ export interface Bindings {
   DATABASE_URL?: string;
   DIRECT_URL?: string;
 
+  SUPABASE_URL?: string;
+  SUPABASE_ANON_KEY?: string;
+  SUPABASE_SERVICE_ROLE_KEY?: string;
+
   CORS_ORIGIN?: string;
 
   MAPBOX_TOKEN?: string;
@@ -39,6 +43,10 @@ export interface AppConfig {
 
   DATABASE_URL: string;
   DIRECT_URL: string;
+
+  SUPABASE_URL: string;
+  SUPABASE_ANON_KEY: string;
+  SUPABASE_SERVICE_ROLE_KEY: string;
 
   CORS_ORIGINS: string[];
 
@@ -81,6 +89,10 @@ export function initEnv(bindings: Bindings): AppConfig {
       bindings.DATABASE_URL ??
       'postgresql://postgres:postgres@localhost:5432/geoaware?schema=public',
     DIRECT_URL: bindings.DIRECT_URL ?? bindings.DATABASE_URL ?? '',
+
+    SUPABASE_URL: bindings.SUPABASE_URL ?? '',
+    SUPABASE_ANON_KEY: bindings.SUPABASE_ANON_KEY ?? '',
+    SUPABASE_SERVICE_ROLE_KEY: bindings.SUPABASE_SERVICE_ROLE_KEY ?? '',
 
     CORS_ORIGINS: (bindings.CORS_ORIGIN ?? 'http://localhost:3000')
       .split(',')

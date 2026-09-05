@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { MapContainer } from '../components/Map/MapContainer';
-import { useMapStore, useRiskStore, useUserStore } from '../hooks/useStores';
+import { useMapStore, useRiskStore } from '../hooks/useStores';
 import { useQuery } from '../hooks/useQuery';
 import { getCurrentLocation } from '../utils/helpers';
 import { cn, formatDistance, getRiskLabel, getRiskColor, getRiskBgColor } from '../utils/helpers';
@@ -13,7 +13,6 @@ import {
 export function RiskPage() {
   const { assessRisk, fetchFaults, loading } = useQuery();
   const { setAssessment, addAssessment, currentAssessment, clearAssessment } = useRiskStore();
-  const { user, setUser } = useUserStore();
   const { center, setCenter, selectFault } = useMapStore();
   
   const [address, setAddress] = useState('');

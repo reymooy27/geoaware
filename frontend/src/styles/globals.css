@@ -81,6 +81,18 @@
   }
 }
 
+/* Override Mapbox popup default white background */
+.mapboxgl-popup-content {
+  background: transparent !important;
+  box-shadow: none !important;
+  padding: 0 !important;
+  border-radius: 0 !important;
+}
+
+.mapboxgl-popup-tip {
+  border-top-color: theme('colors.gray.700') !important;
+}
+
 @layer utilities {
   .text-balance {
     text-wrap: balance;

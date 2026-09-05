@@ -9,15 +9,12 @@ import { onError, notFound } from './middleware/errorHandler.js';
 import { rateLimiter } from './middleware/rateLimiter.js';
 import { api } from './routes/index.js';
 import { runEarthquakeSync, cleanupOldEvents } from './services/scheduler.js';
-import { resetPrismaForRequest } from './utils/prisma.js';
+import { resetPrismaClient } from './utils/prisma.js';
 
 const app = new Hono<Env>();
 
 app.use('*', async (c, next) => {
   initEnv(c.env);
-  // workerd kills pooled pg sockets between requests; a fresh pool per
-  // request avoids multi-second hangs on the second query.
-  resetPrismaForRequest();
   await next();
 });
 

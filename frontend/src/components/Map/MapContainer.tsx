@@ -345,15 +345,15 @@ export function MapContainer({
       .setLngLat(lngLat)
       .setHTML(
         `
-        <div class="p-2 min-w-[200px]">
-          <div class="font-semibold text-black dark:text-gray-100">${props.place}</div>
-          <div class="text-sm text-gray-600 dark:text-gray-400 mt-1">
+        <div class="p-2 min-w-[200px] bg-gray-700 text-white rounded-lg">
+          <div class="font-semibold">${props.place}</div>
+          <div class="text-sm text-gray-300 mt-1">
             Magnitudo: <span class="font-mono ${getRiskColor(props.magnitude >= 7 ? "critical" : props.magnitude >= 5 ? "high" : "medium")}">${props.magnitude.toFixed(1)} SR</span>
           </div>
-          <div class="text-sm text-gray-600 dark:text-gray-400">
+          <div class="text-sm text-gray-300">
             Sumber: ${props.source}
           </div>
-          <div class="text-xs text-gray-500 dark:text-gray-500 mt-1">
+          <div class="text-xs text-gray-400 mt-1">
             ${new Date(props.time).toLocaleString("id-ID")}
           </div>
         </div>
@@ -444,4 +444,3 @@ function removeSourceSafe(m: mapboxgl.Map, id: string) {
     if (m.getSource(id)) m.removeSource(id);
   } catch {}
 }
-

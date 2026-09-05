@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
-import type { Coordinates, RiskLevel, FaultLine, SoilType, EarthquakeEvent, UserLocation, AppSettings, RiskAssessment, EmergencyContact } from '@geoaware/shared';
+import type { Coordinates, FaultLine, EarthquakeEvent, RiskAssessment } from '@geoaware/shared';
 
 interface MapState {
   center: Coordinates;
@@ -15,18 +15,6 @@ interface MapState {
   setStyle: (style: 'standard' | 'satellite' | 'hybrid') => void;
   toggleLayer: (layer: 'faults' | 'earthquakes' | 'soil') => void;
   selectFault: (fault: FaultLine | null) => void;
-}
-
-interface UserState {
-  user: { id: string; name: string; email: string; phone?: string } | null;
-  location: UserLocation | null;
-  settings: AppSettings;
-  emergencyContacts: EmergencyContact[];
-  setUser: (user: UserState['user']) => void;
-  setLocation: (location: UserLocation) => void;
-  updateSettings: (settings: Partial<AppSettings>) => void;
-  addEmergencyContact: (contact: EmergencyContact) => void;
-  removeEmergencyContact: (id: string) => void;
 }
 
 interface RiskState {
@@ -76,36 +64,6 @@ export const useMapStore = create<MapState>()(
       selectFault: (fault) => set({ selectedFault: fault }),
     }),
     { name: 'geoaware-map', storage: createJSONStorage(() => localStorage), version: 1, migrate: (state: any) => { state.style = 'hybrid'; return state; } }
-  )
-);
-
-export const useUserStore = create<UserState>()(
-  persist(
-    (set) => ({
-      user: null,
-      location: null,
-      settings: {
-        theme: 'system',
-        language: 'id',
-        units: 'metric',
-        mapStyle: 'standard',
-        offlineMaps: [],
-        pushNotifications: true,
-        smsNotifications: false,
-        whatsappNotifications: false,
-        minMagnitude: 3.0,
-        alertRadiusKm: 100,
-        offlineOnWifiOnly: true,
-        shareLocationDefault: false,
-      },
-      emergencyContacts: [],
-      setUser: (user) => set({ user }),
-      setLocation: (location) => set({ location }),
-      updateSettings: (settings) => set((state) => ({ settings: { ...state.settings, ...settings } })),
-      addEmergencyContact: (contact) => set((state) => ({ emergencyContacts: [...state.emergencyContacts, contact] })),
-      removeEmergencyContact: (id) => set((state) => ({ emergencyContacts: state.emergencyContacts.filter(c => c.id !== id) })),
-    }),
-    { name: 'geoaware-user', storage: createJSONStorage(() => localStorage) }
   )
 );
 

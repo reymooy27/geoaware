@@ -20,6 +20,10 @@
       "localConnectionString": "postgresql://postgres.yqwcodxrouaahuhgvcdj:TPOOX1tfnNbKPzbf@aws-0-ap-southeast-1.pooler.supabase.com:6543/postgres?pgbouncer=true"
     }
   ],
+  "vars": {
+    "SUPABASE_URL": "https://yqwcodxrouaahuhgvcdj.supabase.co",
+    "SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inlxd2NvZHhyb3VhYWh1aGd2Y2RqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODczNzAyMjQsImV4cCI6MjEwMjk0NjIyNH0.V9ZUuDt3KYgEYHw1jaTKGYqmBhbrRnBkHptwHt6On8A"
+  },
   "observability": {
     "enabled": true
   }

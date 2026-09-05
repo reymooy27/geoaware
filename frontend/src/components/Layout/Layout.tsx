@@ -1,10 +1,9 @@
 import { Outlet, NavLink, useLocation } from 'react-router-dom';
 import { useState } from 'react';
 import { useTheme } from '../../hooks/useTheme';
-import { useUserStore } from '../../hooks/useStores';
 import { cn } from '../../utils/helpers';
 import {
-  Home, AlertTriangle, Map, Download, Settings, Menu, X, Sun, Moon, Monitor, User, LogOut, Bell, ShieldCheck
+  Home, AlertTriangle, Download, Menu, X, Sun, Moon, Monitor, Bell, ShieldCheck
 } from 'lucide-react';
 
 const navItems = [
@@ -12,15 +11,12 @@ const navItems = [
   { path: '/risk', label: 'Cek Risiko', icon: ShieldCheck },
   { path: '/alerts', label: 'Peringatan', icon: AlertTriangle },
   { path: '/offline', label: 'Offline', icon: Download },
-  { path: '/settings', label: 'Pengaturan', icon: Settings },
 ];
 
 export function Layout() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [userMenuOpen, setUserMenuOpen] = useState(false);
   const location = useLocation();
-  const { theme, resolvedTheme, setTheme } = useTheme();
-  const { user, setUser } = useUserStore();
+  const { theme, setTheme } = useTheme();
 
   const toggleTheme = () => {
     const themes: ('light' | 'dark' | 'system')[] = ['light', 'dark', 'system'];
@@ -80,54 +76,6 @@ export function Layout() {
               >
                 <ThemeIcon className="w-5 h-5" aria-hidden="true" />
               </button>
-
-              <button
-                className="relative p-2 rounded-lg text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
-                aria-label="Notifikasi"
-              >
-                <Bell className="w-5 h-5" aria-hidden="true" />
-                <span className="absolute top-1 right-1 w-4 h-4 bg-red-500 text-white text-xs rounded-full flex items-center justify-center">3</span>
-              </button>
-
-              <div className="relative">
-                <button
-                  onClick={() => setUserMenuOpen(!userMenuOpen)}
-                  className="flex items-center gap-2 p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
-                  aria-expanded={userMenuOpen}
-                  aria-haspopup="true"
-                >
-                  <div className="w-8 h-8 rounded-full bg-primary-100 dark:bg-primary-900 flex items-center justify-center">
-                    {user?.name?.[0]?.toUpperCase() || 'U'}
-                  </div>
-                  <span className="hidden sm:block text-sm font-medium text-gray-700 dark:text-gray-300">
-                    {user?.name || 'Pengguna'}
-                  </span>
-                </button>
-
-                {userMenuOpen && (
-                  <div className="absolute right-0 mt-2 w-48 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 py-1 z-50 animate-in">
-                    <div className="px-4 py-2 border-b border-gray-200 dark:border-gray-700">
-                      <p className="text-sm font-medium text-gray-900 dark:text-gray-100">{user?.name || 'Pengguna'}</p>
-                      <p className="text-xs text-gray-500 dark:text-gray-400 truncate">{user?.email}</p>
-                    </div>
-                    <NavLink
-                      to="/settings"
-                      className="flex items-center gap-2 px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
-                      onClick={() => setUserMenuOpen(false)}
-                    >
-                      <Settings className="w-4 h-4" />
-                      Pengaturan
-                    </NavLink>
-                    <button
-                      onClick={() => { setUser(null); setUserMenuOpen(false); }}
-                      className="flex items-center gap-2 w-full px-4 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-gray-100 dark:hover:bg-gray-700"
-                    >
-                      <LogOut className="w-4 h-4" />
-                      Keluar
-                    </button>
-                  </div>
-                )}
-              </div>
 
               <button
                 onClick={() => setMobileMenuOpen(!mobileMenuOpen)}

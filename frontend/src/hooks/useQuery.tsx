@@ -81,7 +81,9 @@ export function QueryProvider({ children }: { children: ReactNode }) {
       const response = await fetch(`${API_BASE}/${endpoint}?${searchParams}`);
       if (!response.ok) throw new Error('Failed to fetch earthquakes');
       const data = await response.json();
-      return data.events || data;
+      if (!response.ok || data.error) throw new Error(data.error || 'Failed to fetch');
+      const events = Array.isArray(data) ? data : (data.events || []);
+      return events;
     } finally {
       setLoadingKey('earthquakes', false);
     }

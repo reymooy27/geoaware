@@ -1,5 +1,4 @@
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
-import { useUserStore } from './useStores';
 
 type Theme = 'light' | 'dark' | 'system';
 
@@ -11,15 +10,21 @@ interface ThemeContextType {
 
 const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
 
+function getStoredTheme(): Theme {
+  try {
+    const stored = localStorage.getItem('geoaware-theme');
+    if (stored === 'light' || stored === 'dark' || stored === 'system') return stored;
+  } catch {}
+  return 'system';
+}
+
 export function ThemeProvider({ children }: { children: ReactNode }) {
   const [resolvedTheme, setResolvedTheme] = useState<'light' | 'dark'>('light');
-  const { settings, updateSettings } = useUserStore();
-
-  const theme = settings.theme;
+  const [theme, setThemeState] = useState<Theme>(getStoredTheme);
 
   useEffect(() => {
     const root = document.documentElement;
-    
+
     const applyTheme = (t: 'light' | 'dark') => {
       root.classList.remove('light', 'dark');
       root.classList.add(t);
@@ -29,7 +34,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     if (theme === 'system') {
       const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
       applyTheme(mediaQuery.matches ? 'dark' : 'light');
-      
+
       const handler = (e: MediaQueryListEvent) => applyTheme(e.matches ? 'dark' : 'light');
       mediaQuery.addEventListener('change', handler);
       return () => mediaQuery.removeEventListener('change', handler);
@@ -39,7 +44,10 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   }, [theme]);
 
   const setTheme = (newTheme: Theme) => {
-    updateSettings({ theme: newTheme });
+    setThemeState(newTheme);
+    try {
+      localStorage.setItem('geoaware-theme', newTheme);
+    } catch {}
   };
 
   return (

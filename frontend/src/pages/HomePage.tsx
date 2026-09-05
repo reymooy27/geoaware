@@ -3,21 +3,20 @@ import { Link } from 'react-router-dom';
 import mapboxgl from 'mapbox-gl';
 import type { Map as MapboxMap } from 'mapbox-gl';
 import { MapContainer } from '../components/Map/MapContainer';
-import { useMapStore, useAlertStore, useUserStore } from '../hooks/useStores';
+import { useMapStore, useAlertStore } from '../hooks/useStores';
 import { useQuery, type EarthquakeFilterParams } from '../hooks/useQuery';
 import { getCurrentLocation } from '../utils/helpers';
 import { cn, formatRelativeTime, getRiskColor } from '../utils/helpers';
 import { EarthquakeFilterPanel } from '../components/Earthquake/EarthquakeFilterPanel';
 import { EarthquakeHistoryList } from '../components/Earthquake/EarthquakeHistoryList';
 import {
-  ShieldCheck, AlertTriangle, MapPin, Download, Settings, Target,
-  Globe, Clock, Menu, X, Navigation, ChevronRight, Locate
+  ShieldCheck, AlertTriangle, MapPin, Download, Target,
+  Clock, Menu, X, Navigation, ChevronRight, Locate
 } from 'lucide-react';
 
 export function HomePage() {
   const { fetchEarthquakes } = useQuery();
   const { addEvent } = useAlertStore();
-  const { setLocation } = useUserStore();
   const { showFaults, showEarthquakes, toggleLayer } = useMapStore();
   const [recentEarthquakes, setRecentEarthquakes] = useState<any[]>([]);
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -36,19 +35,19 @@ export function HomePage() {
     if (navigator.geolocation) {
       getCurrentLocation().then(pos => {
         setUserLoc({ lat: pos.latitude, lng: pos.longitude });
-        setLocation({ coordinates: { latitude: pos.latitude, longitude: pos.longitude }, accuracy: pos.accuracy, timestamp: Date.now(), source: 'gps' });
       }).catch(() => {});
     }
-  }, [setLocation]);
+  }, []);
 
   const loadRecentEarthquakes = useCallback(async (filterOverrides?: EarthquakeFilterParams) => {
     try {
       const params = { ...filters, ...filterOverrides, limit: 10, minMagnitude: filterOverrides?.minMagnitude ?? filters.minMagnitude ?? 0 };
       const data = await fetchEarthquakes(params);
-      setRecentEarthquakes(data);
-      data.forEach((e: any) => addEvent(e));
+      setRecentEarthquakes(Array.isArray(data) ? data : []);
+      if (Array.isArray(data)) data.forEach((e: any) => addEvent(e));
     } catch (error) {
       console.error('Failed to load earthquakes:', error);
+      setRecentEarthquakes([]);
     }
   }, [filters, fetchEarthquakes, addEvent]);
 
@@ -64,7 +63,6 @@ export function HomePage() {
     getCurrentLocation()
       .then(pos => {
         setUserLoc({ lat: pos.latitude, lng: pos.longitude });
-        setLocation({ coordinates: { latitude: pos.latitude, longitude: pos.longitude }, accuracy: pos.accuracy, timestamp: Date.now(), source: 'gps' });
 
         if (mapInstanceRef.current) {
           mapInstanceRef.current.flyTo({
@@ -206,7 +204,6 @@ export function HomePage() {
             <Link to="/risk" onClick={() => setSidebarOpen(false)} className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"><ShieldCheck className="w-4 h-4" /> Cek Risiko <ChevronRight className="w-3 h-3 ml-auto" /></Link>
             <Link to="/alerts" onClick={() => setSidebarOpen(false)} className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"><AlertTriangle className="w-4 h-4" /> Peringatan <ChevronRight className="w-3 h-3 ml-auto" /></Link>
             <Link to="/offline" onClick={() => setSidebarOpen(false)} className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"><Download className="w-4 h-4" /> Mode Offline <ChevronRight className="w-3 h-3 ml-auto" /></Link>
-            <Link to="/settings" onClick={() => setSidebarOpen(false)} className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"><Settings className="w-4 h-4" /> Pengaturan <ChevronRight className="w-3 h-3 ml-auto" /></Link>
           </nav>
         </div>
       )}
