@@ -73,3 +73,5 @@ workbox-*.js
 *.db
 
 .omc/
+_test*.ts
+prisma/_*.sql
