@@ -70,7 +70,14 @@ export function EarthquakeFilterPanel({
   onToggle,
   totalResults = 0,
 }: EarthquakeFilterPanelProps) {
-  // Draft state — only applied when user clicks "Terapkan"
+  const [dateSectionOpen, setDateSectionOpen] = useState(true);
+  const [magSectionOpen, setMagSectionOpen] = useState(true);
+  const [sourceSectionOpen, setSourceSectionOpen] = useState(true);
+  const [locationSectionOpen, setLocationSectionOpen] = useState(true);
+
+  const searchInputRef = useRef<HTMLInputElement>(null);
+
+  // Local filter state — only synced from props on panel open
   const [draft, setDraft] = useState<EarthquakeFilterParams>(() => ({
     minMagnitude: filters.minMagnitude ?? 0,
     maxMagnitude: filters.maxMagnitude,
@@ -80,24 +87,19 @@ export function EarthquakeFilterPanel({
     place: filters.place,
   }));
 
-  const [dateSectionOpen, setDateSectionOpen] = useState(true);
-  const [magSectionOpen, setMagSectionOpen] = useState(true);
-  const [sourceSectionOpen, setSourceSectionOpen] = useState(true);
-  const [locationSectionOpen, setLocationSectionOpen] = useState(true);
-
-  const searchInputRef = useRef<HTMLInputElement>(null);
-
-  // Sync draft from external filters (e.g., on panel open or reset from parent)
+  // Sync draft from external filters ONLY when panel opens
   useEffect(() => {
-    setDraft({
-      minMagnitude: filters.minMagnitude ?? 0,
-      maxMagnitude: filters.maxMagnitude,
-      startDate: filters.startDate,
-      endDate: filters.endDate,
-      source: filters.source ?? "ALL",
-      place: filters.place,
-    });
-  }, [filters]);
+    if (isOpen) {
+      setDraft({
+        minMagnitude: filters.minMagnitude ?? 0,
+        maxMagnitude: filters.maxMagnitude,
+        startDate: filters.startDate,
+        endDate: filters.endDate,
+        source: filters.source ?? "ALL",
+        place: filters.place,
+      });
+    }
+  }, [isOpen, filters]);
 
   const patchDraft = useCallback((patch: Partial<EarthquakeFilterParams>) => {
     setDraft((prev) => ({ ...prev, ...patch }));
