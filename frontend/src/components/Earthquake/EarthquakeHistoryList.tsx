@@ -25,11 +25,16 @@ export function EarthquakeHistoryList({
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(0);
   const [filterOpen, setFilterOpen] = useState(false);
-  const [filters, setFilters] = useState<EarthquakeFilterParams>({
-    minMagnitude: 0,
-    source: 'ALL',
-    limit: PAGE_SIZE,
-    offset: 0,
+  const [filters, setFilters] = useState<EarthquakeFilterParams>(() => {
+    const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+    return {
+      minMagnitude: 0,
+      source: "ALL",
+      limit: PAGE_SIZE,
+      offset: 0,
+      startDate: sevenDaysAgo.toISOString(),
+      endDate: new Date().toISOString(),
+    };
   });
   const [selectedEvent, setSelectedEvent] = useState<any>(null);
 
