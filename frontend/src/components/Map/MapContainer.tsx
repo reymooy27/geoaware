@@ -199,20 +199,22 @@ export function MapContainer({
 
       const geojson = {
         type: "FeatureCollection" as const,
-        features: events.map((event) => ({
-          type: "Feature" as const,
-          geometry: {
-            type: "Point" as const,
-            coordinates: [event.location.longitude, event.location.latitude],
-          },
-          properties: {
-            id: event.id,
-            magnitude: event.magnitude,
-            place: event.place,
-            time: event.time,
-            source: event.source,
-          },
-        })),
+        features: events
+          .filter((event) => event.location?.longitude != null && event.location?.latitude != null)
+          .map((event) => ({
+            type: "Feature" as const,
+            geometry: {
+              type: "Point" as const,
+              coordinates: [event.location.longitude, event.location.latitude],
+            },
+            properties: {
+              id: event.id,
+              magnitude: event.magnitude,
+              place: event.place,
+              time: event.time,
+              source: event.source,
+            },
+          })),
       };
 
       if (m.getSource("earthquakes")) {

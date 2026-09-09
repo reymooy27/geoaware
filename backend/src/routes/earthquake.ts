@@ -27,14 +27,33 @@ function parseGeometry(buf: Uint8Array | null): { longitude: number; latitude: n
 function parseGeometryHex(hex: any): { longitude: number; latitude: number } | null {
   try {
     if (!hex || typeof hex !== 'string') return null;
-    let clean = hex.replace(/^\\x/, '');
+
+    // Decode from PostGIS hex string format (\x...)
+    let clean = hex.replace(/^\\x/, '').replace(/^0x/, '');
+
+    // Try decoding as WKT text (hex-encoded POINT)
+    try {
+      const textBytes = new Uint8Array(clean.length / 2);
+      for (let i = 0; i < textBytes.length; i++) {
+        textBytes[i] = parseInt(clean.substr(i * 2, 2), 16);
+      }
+      const decoded = new TextDecoder().decode(textBytes);
+      const wktMatch = decoded.match(/POINT\s*\(\s*(-?\d+\.?\d*)\s+(-?\d+\.?\d*)\s*\)/i);
+      if (wktMatch) {
+        const lng = parseFloat(wktMatch[1]);
+        const lat = parseFloat(wktMatch[2]);
+        if (!isNaN(lng) && !isNaN(lat) && Math.abs(lng) <= 180 && Math.abs(lat) <= 90) {
+          return { longitude: lng, latitude: lat };
+        }
+      }
+    } catch { /* not a valid text encoding, fall through to WKB */ }
+
     if (clean.length < 25) return null;
     const bytes = hexToBytes(clean);
     const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
     const lng = view.getFloat64(8, true);
     const lat = view.getFloat64(16, true);
     if (isNaN(lng) || isNaN(lat) || Math.abs(lng) > 180 || Math.abs(lat) > 90) {
-      // Try alternate offsets for different WKB formats
       const lng2 = view.getFloat64(9, true);
       const lat2 = view.getFloat64(17, true);
       if (!isNaN(lng2) && !isNaN(lat2) && Math.abs(lng2) <= 180 && Math.abs(lat2) <= 90) {

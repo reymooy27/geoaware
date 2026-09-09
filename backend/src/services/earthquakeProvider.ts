@@ -1,4 +1,4 @@
-import { prisma } from '../utils/prisma.js';
+import { prisma, supabaseInsert } from '../utils/prisma.js';
 import { XMLParser } from 'fast-xml-parser';
 import { getEnv } from '../config/env.js';
 
@@ -102,9 +102,18 @@ const xmlParser = new XMLParser({
   trimValues: true,
 });
 
-/**
- * Insert earthquake using raw SQL so PostGIS handles geometry via ST_SetSRID.
- */
+function toWKB(lng: number, lat: number): string {
+  const buf = new ArrayBuffer(25);
+  const view = new DataView(buf);
+  view.setUint8(0, 1); // little-endian
+  view.setUint32(1, 0x20000001, true); // Point + SRID flag
+  view.setUint32(5, 4326, true); // SRID
+  view.setFloat64(9, lng, true);
+  view.setFloat64(17, lat, true);
+  const bytes = new Uint8Array(buf);
+  return '\\x' + Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
 async function insertEarthquake(params: {
   externalId: string;
   magnitude: number;
@@ -123,16 +132,24 @@ async function insertEarthquake(params: {
     time, source, felt, tsunami = false, metadata = {},
   } = params;
 
-  const metaJson = JSON.stringify(metadata).replace(/'/g, "''");
-
   try {
-    await prisma.$executeRawUnsafe(`
-      INSERT INTO earthquake_events
-        ("id", "externalId", "magnitude", "depth", "location", "place", "time", "source", "felt", "tsunami", "metadata", "createdAt")
-      VALUES
-        (gen_random_uuid()::text, $1, $2, $3, ST_SetSRID(ST_MakePoint($4, $5), 4326)::geometry, $6, $7, $8::"EventSource", $9, $10, $11::jsonb, NOW())
-      ON CONFLICT ("externalId") DO NOTHING
-    `, externalId, magnitude, depth, lng, lat, place, time, source, felt, tsunami, metaJson);
+    await supabaseInsert(
+      'earthquake_events',
+      {
+        id: crypto.randomUUID(),
+        externalId,
+        magnitude,
+        depth,
+        location: toWKB(lng, lat),
+        place,
+        time: time.toISOString(),
+        source,
+        felt,
+        tsunami,
+        metadata,
+      },
+      { deduplicateBy: 'externalId' }
+    );
     return true;
   } catch (e: any) {
     logger.error({ error: e.message, externalId }, 'Failed to insert earthquake');

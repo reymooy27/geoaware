@@ -1,12 +1,14 @@
 import { Hono } from 'hono';
 import { z } from 'zod';
-import { prisma } from '../utils/prisma.js';
+import { query, supabaseInsert } from '../utils/prisma.js';
 import type { Env } from '../config/env.js';
 import { AppError } from '../middleware/errorHandler.js';
 import { readJson } from '../utils/http.js';
 import { calculateRisk } from '../services/riskCalculator.js';
 import { getNearestFault } from '../services/faultService.js';
 import { getSoilTypeAtLocation, getAllSoilTypes } from '../services/soilService.js';
+import { toWKB } from '../utils/prisma.js';
+import { wkbToGeoJSON } from '../utils/prisma.js';
 
 export const riskRoutes = new Hono<Env>();
 
@@ -38,14 +40,20 @@ riskRoutes.post('/assess', async (c) => {
   });
 
   if (data.userId) {
-    const checklistJson = JSON.stringify(assessment.buildingChecklist).replace(/'/g, "''");
+    const checklistJson = JSON.stringify(assessment.buildingChecklist);
     const recsArr = assessment.recommendations;
-    await prisma.$executeRawUnsafe(`
-      INSERT INTO risk_assessments
-        ("id", "userId", "location", "address", "nearestFaultId", "nearestFaultDist", "soilTypeId", "riskLevel", "recommendations", "buildingChecklist", "createdAt", "updatedAt")
-      VALUES
-        (gen_random_uuid()::text, $1, ST_SetSRID(ST_MakePoint($2, $3), 4326)::geometry, $4, $5, $6, $7, $8::"RiskLevel", $9, $10::jsonb, NOW(), NOW())
-    `, data.userId, data.longitude, data.latitude, data.address || null, nearestFault.id, assessment.nearestFault.distanceKm, soilType?.id || null, assessment.riskScore.toUpperCase(), recsArr, checklistJson);
+    await supabaseInsert('risk_assessments', {
+      id: crypto.randomUUID(),
+      userId: data.userId,
+      location: toWKB(data.longitude, data.latitude),
+      address: data.address || null,
+      nearestFaultId: nearestFault.id,
+      nearestFaultDist: assessment.nearestFault.distanceKm,
+      soilTypeId: soilType?.id || null,
+      riskLevel: assessment.riskScore.toUpperCase(),
+      recommendations: recsArr,
+      buildingChecklist: checklistJson,
+    }, { deduplicateBy: 'id' });
   }
 
   return c.json(assessment);
@@ -55,12 +63,9 @@ riskRoutes.get('/history/:userId', async (c) => {
   const { userId } = c.req.param();
   const { limit = '10', offset = '0' } = c.req.query();
 
-  const assessments = await prisma.riskAssessment.findMany({
-    where: { userId },
-    orderBy: { createdAt: 'desc' },
-    take: parseInt(limit),
-    skip: parseInt(offset),
-  });
+  const assessments = await query(
+    `risk_assessments?select=*&userId=eq.${userId}&order=createdAt.desc&limit=${limit}&offset=${offset}`
+  );
 
   return c.json(assessments);
 });

@@ -1,8 +1,9 @@
 import { Hono } from 'hono';
 import { z } from 'zod';
-import { prisma } from '../utils/prisma.js';
+import { query, wkbToGeoJSON } from '../utils/prisma.js';
 import type { Env } from '../config/env.js';
 import { AppError } from '../middleware/errorHandler.js';
+import type { FaultLine } from '../../../shared/dist/types/index.js';
 
 export const faultRoutes = new Hono<Env>();
 
@@ -18,46 +19,34 @@ const querySchema = z.object({
 faultRoutes.get('/', async (c) => {
   const params = querySchema.parse(c.req.query());
 
-  let where = '';
-  const values: any[] = [];
-  let paramIndex = 1;
+  let path = 'fault_lines?select=*&order=activityLevel.desc,maxMagnitude.desc';
 
-  if (params.type) {
-    where += `WHERE type = $${paramIndex++}`;
-    values.push(params.type);
-  }
+  const filters: string[] = [];
+  if (params.type) filters.push(`type=eq.${params.type}`);
+  if (filters.length) path += `&${filters.join('&')}`;
 
-  if (params.latitude && params.longitude && params.radiusKm) {
-    if (where) where += ' AND ';
-    else where += ' WHERE ';
-    where += `ST_DWithin(geometry, ST_SetSRID(ST_MakePoint($${paramIndex}, $${paramIndex + 1}), 4326)::geography, $${paramIndex + 2})`;
-    values.push(params.longitude, params.latitude, params.radiusKm * 1000);
-    paramIndex += 3;
-  }
+  const faults = await query(path) as any[];
 
-  const faults = await prisma.$queryRawUnsafe(`
-    SELECT
-      id, name, type, "maxMagnitude",
-      "activityLevel", "slipRate",
-      "lastEvent", source,
-      ST_AsGeoJSON(geometry::geometry)::json as geometry
-    FROM "fault_lines"
-    ${where}
-    ORDER BY "activityLevel" DESC, "maxMagnitude" DESC
-    LIMIT $${paramIndex++} OFFSET $${paramIndex}
-  `, ...values, params.limit, params.offset) as any[];
-
-  const result = faults.map((fault: any) => ({
+  let result = faults.map((fault: any) => ({
     id: fault.id,
     name: fault.name,
     type: fault.type.toLowerCase(),
-    geometry: fault.geometry,
+    geometry: wkbToGeoJSON(fault.geometry),
     maxMagnitude: fault.maxMagnitude,
     activityLevel: fault.activityLevel,
     slipRate: fault.slipRate,
     lastEvent: fault.lastEvent?.toISOString(),
   }));
 
+  if (params.latitude && params.longitude && params.radiusKm) {
+    const radiusM = params.radiusKm * 1000;
+    result = result.filter((f) => {
+      if (!f.geometry || f.geometry.type !== 'LineString') return false;
+      return lineStringWithinRadius(f.geometry.coordinates, params.longitude!, params.latitude!, radiusM);
+    }).slice(0, params.limit);
+  }
+
+  result = result.slice(params.offset, params.offset + params.limit);
   return c.json(result);
 });
 
@@ -70,36 +59,30 @@ faultRoutes.get('/nearby/:latitude/:longitude', async (c) => {
     throw new AppError(400, 'Invalid coordinates', 'INVALID_COORDINATES');
   }
 
-  const faults = await prisma.$queryRawUnsafe(`
-    SELECT
-      id, name, type, "maxMagnitude",
-      "activityLevel",
-      ST_Distance(
-        geometry::geography,
-        ST_SetSRID(ST_MakePoint($1, $2), 4326)::geography
-      ) / 1000 as distance_km,
-      ST_AsGeoJSON(geometry::geometry)::json as geometry
-    FROM "fault_lines"
-    WHERE ST_DWithin(
-      geometry,
-      ST_SetSRID(ST_MakePoint($1, $2), 4326)::geography,
-      $3
-    )
-    ORDER BY distance_km ASC
-    LIMIT $4
-  `, longitude, latitude, parseFloat(radiusKm) * 1000, parseInt(limit)) as any[];
+  const faults = await query('fault_lines?select=*&order=name') as any[];
 
-  const result = faults.map((fault: any) => ({
-    id: fault.id,
-    name: fault.name,
-    type: fault.type.toLowerCase(),
-    geometry: fault.geometry,
-    maxMagnitude: fault.maxMagnitude,
-    activityLevel: fault.activityLevel,
-    slipRate: fault.slipRate,
-    lastEvent: fault.lastEvent?.toISOString(),
-    distanceKm: fault.distance_km,
-  }));
+  const radiusM = parseFloat(radiusKm) * 1000;
+  const result = faults
+    .map((fault: any) => {
+      const geom = wkbToGeoJSON(fault.geometry);
+      if (!geom || geom.type !== 'LineString') return null;
+      const dist = lineStringToPointDistance(geom.coordinates, longitude, latitude);
+      return {
+        id: fault.id,
+        name: fault.name,
+        type: fault.type.toLowerCase(),
+        geometry: geom,
+        maxMagnitude: fault.maxMagnitude,
+        activityLevel: fault.activityLevel,
+        slipRate: fault.slipRate,
+        lastEvent: fault.lastEvent?.toISOString(),
+        distanceKm: dist === null ? 999999 : dist / 1000,
+      };
+    })
+    .filter((f): f is NonNullable<typeof f> => f !== null)
+    .filter((f) => f.distanceKm < radiusM / 1000)
+    .sort((a, b) => a.distanceKm - b.distanceKm)
+    .slice(0, parseInt(limit));
 
   return c.json(result);
 });
@@ -107,26 +90,18 @@ faultRoutes.get('/nearby/:latitude/:longitude', async (c) => {
 faultRoutes.get('/:faultId', async (c) => {
   const { faultId } = c.req.param();
 
-  const fault = await prisma.$queryRawUnsafe(`
-    SELECT
-      id, name, type, "maxMagnitude",
-      "activityLevel", "slipRate",
-      "lastEvent", source, metadata,
-      ST_AsGeoJSON(geometry::geometry)::json as geometry
-    FROM "fault_lines"
-    WHERE id = $1
-  `, faultId) as any[];
+  const faults = await query(`fault_lines?select=*&id=eq.${faultId}&limit=1`) as any[];
 
-  if (fault.length === 0) {
+  if (faults.length === 0) {
     throw new AppError(404, 'Fault line not found', 'FAULT_NOT_FOUND');
   }
 
-  const f = fault[0];
+  const f = faults[0];
   return c.json({
     id: f.id,
     name: f.name,
     type: f.type.toLowerCase(),
-    geometry: f.geometry,
+    geometry: wkbToGeoJSON(f.geometry),
     maxMagnitude: f.maxMagnitude,
     activityLevel: f.activityLevel,
     slipRate: f.slipRate,
@@ -135,3 +110,35 @@ faultRoutes.get('/:faultId', async (c) => {
     metadata: f.metadata,
   });
 });
+
+function lineStringWithinRadius(
+  coords: number[][], lng: number, lat: number, radiusM: number
+): boolean {
+  const d = lineStringToPointDistance(coords, lng, lat);
+  return d !== null && d < radiusM;
+}
+
+function lineStringToPointDistance(
+  lineCoords: number[][], lng: number, lat: number
+): number | null {
+  if (lineCoords.length === 0) return null;
+
+  // Simple: compute minimum distance to any vertex (sufficient for filtering small line strings)
+  // Uses haversine for accuracy
+  let minDist = Infinity;
+  for (const [x, y] of lineCoords) {
+    const d = haversine(y, x, lat, lng); // (lat, lng)
+    if (d < minDist) minDist = d;
+  }
+  return minDist;
+}
+
+function haversine(lat1: number, lng1: number, lat2: number, lng2: number): number {
+  const R = 6371000; // Earth radius in meters
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLng = (lng2 - lng1) * Math.PI / 180;
+  const a = Math.sin(dLat / 2) ** 2 +
+    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+    Math.sin(dLng / 2) ** 2;
+  return R * 2 * Math.asin(Math.sqrt(a));
+}

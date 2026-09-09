@@ -1,4 +1,4 @@
-import { prisma } from '../utils/prisma.js';
+import { supabaseDelete } from '../utils/prisma.js';
 import { fetchBMKGEvents, fetchUSGSEvents } from './earthquakeProvider.js';
 import { checkAndNotifyUsers } from './notification.js';
 
@@ -42,9 +42,10 @@ export async function runEarthquakeSync(): Promise<SyncResult> {
 export async function cleanupOldEvents(): Promise<number> {
   const cutoff = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000);
 
-  const result = await prisma.earthquakeEvent.deleteMany({
-    where: { time: { lt: cutoff } },
-  });
+  const result = await supabaseDelete(
+    'earthquake_events',
+    `time=lt.${cutoff.toISOString()}`
+  );
 
   logger.info({ deleted: result.count }, 'Old events cleaned up');
   return result.count;

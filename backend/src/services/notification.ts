@@ -1,4 +1,4 @@
-import { prisma } from '../utils/prisma.js';
+import { query } from '../utils/prisma.js';
 import { getEnv } from '../config/env.js';
 
 const logger = {
@@ -20,12 +20,8 @@ export async function sendPushNotification(
   }
 
   try {
-    const user = await prisma.user.findUnique({
-      where: { id: userId },
-      select: { id: true },
-    });
-
-    if (!user) return false;
+    const users = await query(`users?select=id&id=eq.${userId}&limit=1`);
+    if (users.length === 0) return false;
 
     const message = {
       notification: { title, body },
@@ -130,21 +126,14 @@ function str2ab(str: string): ArrayBuffer {
  */
 export async function checkAndNotifyUsers(): Promise<void> {
   try {
-    const recentEvents = await prisma.earthquakeEvent.findMany({
-      where: {
-        time: { gte: new Date(Date.now() - 5 * 60 * 1000) },
-        magnitude: { gte: 3.0 },
-      },
-      orderBy: { time: 'desc' },
-    });
+    const since = new Date(Date.now() - 5 * 60 * 1000).toISOString();
+    const recentEvents = await query(
+      `earthquake_events?select=id,magnitude,place,depth,time&time=gte.${since}&magnitude=gte.3.0&order=time.desc`
+    );
 
     if (recentEvents.length === 0) return;
 
-    const users = await prisma.user.findMany({
-      include: {
-        settings: true,
-      },
-    });
+    const users = await query('users?select=id,settings');
 
     for (const user of users) {
       if (!user.settings?.pushEnabled) continue;
