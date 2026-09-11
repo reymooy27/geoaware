@@ -50,6 +50,12 @@ coverage/
 # OMC agent state
 .omo/
 
+# OpenCode
+opencode.json
+
+# Cloudflare Workers generated types
+worker-configuration.d.ts
+
 # Codegraph index
 .codegraph/
 
