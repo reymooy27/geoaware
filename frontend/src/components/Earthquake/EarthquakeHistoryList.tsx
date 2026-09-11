@@ -5,7 +5,6 @@ import {
 } from 'lucide-react';
 import { cn, formatRelativeTime, formatDate } from '@/utils/helpers';
 import { useQuery, type EarthquakeFilterParams } from '@/hooks/useQuery';
-import { EarthquakeFilterPanel } from './EarthquakeFilterPanel';
 
 interface EarthquakeHistoryListProps {
   isOpen: boolean;
@@ -24,8 +23,7 @@ export function EarthquakeHistoryList({
   const [events, setEvents] = useState<any[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(0);
-  const [filterOpen, setFilterOpen] = useState(false);
-  const [filters, setFilters] = useState<EarthquakeFilterParams>(() => {
+  const [filters] = useState<EarthquakeFilterParams>(() => {
     const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
     return {
       minMagnitude: 0,
@@ -58,11 +56,6 @@ export function EarthquakeHistoryList({
     }
   }, [isOpen, loadEvents]);
 
-  const handleFilterChange = useCallback((newFilters: EarthquakeFilterParams) => {
-    setFilters(prev => ({ ...prev, ...newFilters }));
-    setPage(0);
-  }, []);
-
   const totalPages = Math.ceil(total / PAGE_SIZE);
 
   const getMagnitudeColor = (mag: number) => {
@@ -84,29 +77,9 @@ export function EarthquakeHistoryList({
 
   return (
     <>
-      {/* Toggle Button */}
-      <button
-        onClick={onToggle}
-        className={cn(
-          'flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors',
-          isOpen
-            ? 'bg-primary-100 dark:bg-primary-900/30 text-primary-700 dark:text-primary-300'
-            : 'bg-white/90 dark:bg-gray-800/90 backdrop-blur-sm text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 shadow-lg'
-        )}
-        title="Riwayat Gempa"
-      >
-        <List className="w-3.5 h-3.5" />
-        <span className="hidden sm:inline">Riwayat</span>
-        {total > 0 && (
-          <span className="text-[9px] bg-gray-200 dark:bg-gray-600 px-1 rounded-full">
-            {total > 999 ? '999+' : total}
-          </span>
-        )}
-      </button>
-
       {/* Full-width panel */}
       {isOpen && (
-        <div className="fixed sm:absolute left-2 right-2 bottom-14 sm:left-auto sm:inset-x-auto sm:right-4 sm:bottom-16 sm:w-96 z-[80] sm:z-30 max-h-[55vh] sm:max-h-[60vh] bg-white dark:bg-gray-800 rounded-xl shadow-2xl border border-gray-200 dark:border-gray-700 overflow-hidden flex flex-col animate-in">
+        <div className="fixed sm:absolute left-2 right-2 bottom-14 sm:left-0 sm:right-auto sm:top-0 sm:bottom-0 sm:w-[320px] z-[80] sm:z-30 max-h-[55vh] sm:max-h-none bg-white dark:bg-gray-800 rounded-xl sm:rounded-none sm:rounded-r-xl shadow-2xl sm:shadow-none border border-gray-200 sm:border-r dark:border-gray-700 overflow-hidden flex flex-col animate-in">
           {/* Header */}
           <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 dark:border-gray-700">
             <div className="flex items-center gap-2">
@@ -118,24 +91,12 @@ export function EarthquakeHistoryList({
                 {total.toLocaleString('id-ID')}
               </span>
             </div>
-            <div className="flex items-center gap-1">
-              {/* Filter toggle inside the header */}
-              <div className="relative">
-                <EarthquakeFilterPanel
-                  filters={filters}
-                  onFilterChange={handleFilterChange}
-                  isOpen={filterOpen}
-                  onToggle={() => setFilterOpen(!filterOpen)}
-                  totalResults={total}
-                />
-              </div>
-              <button
-                onClick={onToggle}
-                className="ml-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
+            <button
+              onClick={onToggle}
+              className="ml-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+            >
+              <X className="w-4 h-4" />
+            </button>
           </div>
 
           {/* Event List */}
@@ -150,9 +111,6 @@ export function EarthquakeHistoryList({
                 <Filter className="w-6 h-6 text-gray-300 dark:text-gray-600 mx-auto mb-2" />
                 <p className="text-xs text-gray-500 dark:text-gray-400">
                   Tidak ada data gempa ditemukan
-                </p>
-                <p className="text-[10px] text-gray-400 dark:text-gray-500 mt-1">
-                  Coba ubah filter pencarian
                 </p>
               </div>
             ) : (
