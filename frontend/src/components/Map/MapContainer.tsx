@@ -1,10 +1,10 @@
-import { useEffect, useRef, useState, useCallback } from "react";
+import { useQuery, type EarthquakeFilterParams } from "@/hooks/useQuery";
+import { useMapStore } from "@/hooks/useStores";
+import { cn, getFaultTypeColor, getRiskColor } from "@/utils/helpers";
+import type { Coordinates, EarthquakeEvent, FaultLine } from "@geoaware/shared";
 import mapboxgl from "mapbox-gl";
 import "mapbox-gl/dist/mapbox-gl.css";
-import { useMapStore } from "@/hooks/useStores";
-import { useQuery, type EarthquakeFilterParams } from "@/hooks/useQuery";
-import type { FaultLine, EarthquakeEvent, Coordinates } from "@geoaware/shared";
-import { getFaultTypeColor, getRiskColor, cn } from "@/utils/helpers";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 mapboxgl.accessToken = (import.meta as any).env?.VITE_MAPBOX_TOKEN || "";
 
@@ -44,18 +44,18 @@ export function MapContainer({
       preserveDrawingBuffer: true,
     });
 
-    m.addControl(
-      new mapboxgl.NavigationControl({ showCompass: false }),
-      "top-right",
-    );
-    m.addControl(
-      new mapboxgl.GeolocateControl({
-        positionOptions: { enableHighAccuracy: true },
-        trackUserLocation: true,
-        showUserHeading: true,
-      }),
-      "top-right",
-    );
+    // m.addControl(
+    //   new mapboxgl.NavigationControl({ showCompass: false }),
+    //   "top-right",
+    // );
+    // m.addControl(
+    //   new mapboxgl.GeolocateControl({
+    //     positionOptions: { enableHighAccuracy: true },
+    //     trackUserLocation: true,
+    //     showUserHeading: true,
+    //   }),
+    //   "top-right",
+    // );
 
     m.on("load", () => {
       map.current = m;
@@ -200,7 +200,11 @@ export function MapContainer({
       const geojson = {
         type: "FeatureCollection" as const,
         features: events
-          .filter((event) => event.location?.longitude != null && event.location?.latitude != null)
+          .filter(
+            (event) =>
+              event.location?.longitude != null &&
+              event.location?.latitude != null,
+          )
           .map((event) => ({
             type: "Feature" as const,
             geometry: {
