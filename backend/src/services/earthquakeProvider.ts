@@ -64,12 +64,13 @@ function parseBMKGDateTime(isoStr: string, dateStr: string, timeStr: string): Da
     const month = ID_MONTHS[indoMatch[2]] ?? 0;
     const year = parseInt(indoMatch[3]);
     const timeParts = timeStr.replace(/\s*WIB|\s*WITA|\s*WIT/gi, '').split(':').map(Number);
-    return new Date(year, month, day, timeParts[0] || 0, timeParts[1] || 0, timeParts[2] || 0);
+    // Time without offset is BMKG wall-clock WIB (UTC+7); Date.UTC avoids server tz.
+    return new Date(Date.UTC(year, month, day, (timeParts[0] || 0) - 7, timeParts[1] || 0, timeParts[2] || 0));
   }
 
   const [day, month, year] = dateStr.split('/').map(Number);
   const [hour, minute, second] = timeStr.split(':').map(Number);
-  return new Date(year, month - 1, day, hour, minute, second);
+  return new Date(Date.UTC(year, month - 1, day, hour - 7, minute, second));
 }
 
 function parseBMKGCoordinates(coordStr: string): { lat: number; lng: number } {

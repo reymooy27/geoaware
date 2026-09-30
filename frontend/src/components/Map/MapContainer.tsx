@@ -360,7 +360,7 @@ export function MapContainer({
             Sumber: ${props.source}
           </div>
           <div class="text-xs text-gray-400 mt-1">
-            ${new Date(props.time).toLocaleString("id-ID")}
+            ${new Date(props.time).toLocaleString("id-ID", { timeZone: "Asia/Jakarta" })} WIB
           </div>
         </div>
       `,
