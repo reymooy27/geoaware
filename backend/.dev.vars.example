@@ -26,3 +26,10 @@ TWILIO_PHONE_NUMBER=
 
 WHATSAPP_API_URL=
 WHATSAPP_API_TOKEN=
+
+# Web Push (VAPID): generate via npx web-push generate-vapid-keys
+# VAPID_PRIVATE_KEY accepts the raw 32-byte base64url scalar from that tool OR
+# a PEM pkcs8 key. Produksi: npx wrangler secret put VAPID_PUBLIC_KEY / VAPID_PRIVATE_KEY / VAPID_SUBJECT
+VAPID_PUBLIC_KEY=
+VAPID_PRIVATE_KEY=
+VAPID_SUBJECT=mailto:admin@yourdomain.com

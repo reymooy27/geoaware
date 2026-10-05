@@ -1,5 +1,6 @@
 import { query } from '../utils/prisma.js';
 import { getEnv } from '../config/env.js';
+import { notifySubscribers, type NewEvent } from './webpush.js';
 
 const logger = {
   info: (obj: unknown, msg: string) => console.log(`[INFO] ${msg}`, obj),
@@ -119,41 +120,14 @@ function str2ab(str: string): ArrayBuffer {
 }
 
 /**
- * Notify users about recent M≥3.0 events via FCM push.
- *
- * Real-time delivery to clients is push-based; clients that miss a push pick
- * up data through normal polling of GET /api/earthquakes/latest.
+ * Deliver newly-ingested earthquake events to Web Push subscribers whose
+ * magnitude threshold is met. Called by runEarthquakeSync with only the
+ * events inserted in this cycle — duplicates are impossible at this layer.
  */
-export async function checkAndNotifyUsers(): Promise<void> {
+export async function notifyEarthquake(events: NewEvent[]): Promise<void> {
   try {
-    const since = new Date(Date.now() - 5 * 60 * 1000).toISOString();
-    const recentEvents = await query(
-      `earthquake_events?select=id,magnitude,place,depth,time&time=gte.${since}&magnitude=gte.3.0&order=time.desc`
-    );
-
-    if (recentEvents.length === 0) return;
-
-    const users = await query('users?select=id,settings');
-
-    for (const user of users) {
-      if (!user.settings?.pushEnabled) continue;
-
-      const minMag = user.settings.minMagnitude || 3.0;
-
-      const relevantEvents = recentEvents.filter((event: any) =>
-        event.magnitude >= minMag
-      );
-
-      for (const event of relevantEvents) {
-        await sendPushNotification(
-          user.id,
-          `Gempa ${event.magnitude} SR`,
-          `${event.place} - ${event.magnitude} SR, Kedalaman ${event.depth} km`,
-          { eventId: event.id, magnitude: event.magnitude.toString() }
-        );
-      }
-    }
+    await notifySubscribers(events);
   } catch (error) {
-    logger.error({ error }, 'Check and notify error');
+    logger.error({ error }, 'Notify subscribers error');
   }
 }

@@ -1,6 +1,7 @@
-import { prisma, supabaseInsert } from '../utils/prisma.js';
+import { query, supabaseInsert } from '../utils/prisma.js';
 import { XMLParser } from 'fast-xml-parser';
 import { getEnv } from '../config/env.js';
+import type { NewEvent } from './webpush.js';
 
 const logger = {
   info: (obj: unknown, msg: string) => console.log(`[INFO] ${msg}`, obj),
@@ -127,7 +128,7 @@ async function insertEarthquake(params: {
   felt: boolean;
   tsunami?: boolean;
   metadata?: Record<string, unknown>;
-}): Promise<boolean> {
+}): Promise<NewEvent | null> {
   const {
     externalId, magnitude, depth, lng, lat, place,
     time, source, felt, tsunami = false, metadata = {},
@@ -151,10 +152,10 @@ async function insertEarthquake(params: {
       },
       { deduplicateBy: 'externalId' }
     );
-    return true;
+    return { id: externalId, magnitude, depth, place, time: time.toISOString(), source };
   } catch (e: any) {
     logger.error({ error: e.message, externalId }, 'Failed to insert earthquake');
-    return false;
+    return null;
   }
 }
 
@@ -162,12 +163,36 @@ async function fetchWithTimeout(url: string): Promise<Response> {
   return fetch(url, { signal: AbortSignal.timeout(10_000) });
 }
 
-export async function fetchBMKGEvents(): Promise<number> {
+type InsertParams = Parameters<typeof insertEarthquake>[0];
+
+async function filterNew(candidates: InsertParams[]): Promise<InsertParams[]> {
+  if (candidates.length === 0) return [];
+  try {
+    const ids = candidates
+      .map((c) => encodeURIComponent(`"${c.externalId.replace(/"/g, '')}"`))
+      .join(',');
+    const existing = await query<{ externalId: string }>(
+      `earthquake_events?select=externalId&externalId=in.(${ids})`
+    );
+    const seen = new Set(existing.map((e) => e.externalId));
+    return candidates.filter((c) => !seen.has(c.externalId));
+  } catch (error) {
+    logger.error({ error }, 'Existence check failed; inserting all candidates');
+    return candidates;
+  }
+}
+
+export interface ProviderResult {
+  count: number;
+  events: NewEvent[];
+}
+
+export async function fetchBMKGEvents(): Promise<ProviderResult> {
   try {
     const response = await fetchWithTimeout(getEnv().BMKG_API_URL);
     if (!response.ok) {
       logger.error({ status: response.status }, 'BMKG feed returned non-OK status');
-      return 0;
+      return { count: 0, events: [] };
     }
 
     const xml = await response.text();
@@ -176,11 +201,11 @@ export async function fetchBMKGEvents(): Promise<number> {
     const gempaElements = parsed?.Infogempa?.gempa;
     if (!gempaElements) {
       logger.warn('No gempa elements found in BMKG response');
-      return 0;
+      return { count: 0, events: [] };
     }
 
     const gempaArray = Array.isArray(gempaElements) ? gempaElements : [gempaElements];
-    let saved = 0;
+    const candidates: InsertParams[] = [];
 
     for (const gempa of gempaArray) {
       // New BMKG format: coordinates inside <point><coordinates>, old format: <Coordinates>
@@ -210,7 +235,7 @@ export async function fetchBMKGEvents(): Promise<number> {
       const time = parseBMKGDateTime(event.DateTime, event.Tanggal, event.Jam);
       const externalId = `bmkg-${time.getTime()}-${lat.toFixed(4)}-${lng.toFixed(4)}`;
 
-      const inserted = await insertEarthquake({
+      candidates.push({
         externalId,
         magnitude,
         depth: parseFloat(event.Kedalaman) || 10,
@@ -226,27 +251,31 @@ export async function fetchBMKGEvents(): Promise<number> {
           potensi: event.Potensi,
         },
       });
-      if (inserted) saved++;
     }
 
-    logger.info({ count: saved }, 'BMKG events fetched');
-    return saved;
+    const fresh = await filterNew(candidates);
+    const events = (await Promise.all(fresh.map(insertEarthquake))).filter(
+      (e): e is NewEvent => e !== null
+    );
+
+    logger.info({ count: events.length }, 'BMKG events fetched');
+    return { count: events.length, events };
   } catch (error) {
     logger.error({ error }, 'Failed to fetch BMKG events');
-    return 0;
+    return { count: 0, events: [] };
   }
 }
 
-export async function fetchUSGSEvents(): Promise<number> {
+export async function fetchUSGSEvents(): Promise<ProviderResult> {
   try {
     const response = await fetchWithTimeout(getEnv().USGS_API_URL);
     if (!response.ok) {
       logger.error({ status: response.status }, 'USGS feed returned non-OK status');
-      return 0;
+      return { count: 0, events: [] };
     }
 
     const data = await response.json() as { features: USGSEvent[] };
-    let saved = 0;
+    const candidates: InsertParams[] = [];
 
     for (const feature of data.features) {
       const { properties, geometry, id } = feature;
@@ -258,7 +287,7 @@ export async function fetchUSGSEvents(): Promise<number> {
       const time = new Date(properties.time);
       const externalId = `usgs-${id}`;
 
-      const inserted = await insertEarthquake({
+      candidates.push({
         externalId,
         magnitude: properties.mag,
         depth: depth || 10,
@@ -274,13 +303,17 @@ export async function fetchUSGSEvents(): Promise<number> {
           code: properties.code,
         },
       });
-      if (inserted) saved++;
     }
 
-    logger.info({ count: saved }, 'USGS events fetched');
-    return saved;
+    const fresh = await filterNew(candidates);
+    const events = (await Promise.all(fresh.map(insertEarthquake))).filter(
+      (e): e is NewEvent => e !== null
+    );
+
+    logger.info({ count: events.length }, 'USGS events fetched');
+    return { count: events.length, events };
   } catch (error) {
     logger.error({ error }, 'Failed to fetch USGS events');
-    return 0;
+    return { count: 0, events: [] };
   }
 }

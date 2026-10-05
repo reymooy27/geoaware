@@ -6,10 +6,22 @@ import {
   AlertTriangle, Bell, BellRing, MapPin, Loader2, CheckCircle
 } from 'lucide-react';
 
+function urlBase64ToUint8Array(base64String: string): Uint8Array<ArrayBuffer> {
+  const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
+  const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+  const raw = window.atob(base64);
+  const output = new Uint8Array(raw.length);
+  for (let i = 0; i < raw.length; i++) output[i] = raw.charCodeAt(i);
+  return output;
+}
+
 export function AlertPage() {
   const { events, unreadCount, markRead, addEvent } = useAlertStore();
   const { fetchEarthquakes } = useQuery();
   const [notificationStatus, setNotificationStatus] = useState<'default' | 'granted' | 'denied' | 'prompting'>('default');
+  const [subscribed, setSubscribed] = useState(false);
+  const [pushBusy, setPushBusy] = useState(false);
+  const [pushError, setPushError] = useState<string | null>(null);
   const lastEventCount = useRef(events.length);
 
   // Request browser notification permission
@@ -22,6 +34,66 @@ export function AlertPage() {
     setNotificationStatus('prompting');
     const result = await Notification.requestPermission();
     setNotificationStatus(result === 'granted' ? 'granted' : 'denied');
+  };
+
+  const subscribePush = useCallback(async () => {
+    setPushBusy(true);
+    setPushError(null);
+    try {
+      if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+        throw new Error('Browser tidak mendukung push notification');
+      }
+      const reg = await navigator.serviceWorker.ready;
+      const res = await fetch('/api/alerts/push/public-key');
+      const { key } = await res.json();
+      if (!key) throw new Error('Server belum dikonfigurasi (VAPID key kosong)');
+
+      const existing = await reg.pushManager.getSubscription();
+      const sub = existing ?? await reg.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(key),
+      });
+      const json = sub.toJSON();
+
+      const save = await fetch('/api/alerts/push/subscribe', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ endpoint: json.endpoint, keys: json.keys }),
+      });
+      if (!save.ok) throw new Error('Gagal menyimpan subscription ke server');
+      setSubscribed(true);
+    } catch (e) {
+      setPushError(e instanceof Error ? e.message : 'Gagal mengaktifkan push');
+    } finally {
+      setPushBusy(false);
+    }
+  }, []);
+
+  const unsubscribePush = useCallback(async () => {
+    setPushBusy(true);
+    setPushError(null);
+    try {
+      const reg = await navigator.serviceWorker.ready;
+      const sub = await reg.pushManager.getSubscription();
+      if (sub) {
+        await fetch('/api/alerts/push/unsubscribe', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ endpoint: sub.endpoint }),
+        });
+        await sub.unsubscribe();
+      }
+      setSubscribed(false);
+    } catch (e) {
+      setPushError(e instanceof Error ? e.message : 'Gagal menonaktifkan push');
+    } finally {
+      setPushBusy(false);
+    }
+  }, []);
+
+  const enableNotifications = async () => {
+    await requestNotificationPermission();
+    if (Notification.permission === 'granted') await subscribePush();
   };
 
   // Send a browser notification for a new earthquake
@@ -61,12 +133,20 @@ export function AlertPage() {
     });
   }, [markRead, fetchEarthquakes, addEvent]);
 
-  // Check notification permission on mount
+  // Check notification permission + existing subscription on mount
   useEffect(() => {
     if ('Notification' in window) {
       setNotificationStatus(Notification.permission);
     }
+    if ('serviceWorker' in navigator && 'PushManager' in window) {
+      navigator.serviceWorker.ready.then(async (reg) => {
+        const sub = await reg.pushManager.getSubscription();
+        setSubscribed(!!sub);
+      });
+    }
   }, []);
+
+  const pushActive = notificationStatus === 'granted' && subscribed;
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
@@ -80,7 +160,7 @@ export function AlertPage() {
         <div className="card p-6 mb-6">
           <div className="flex items-start gap-4">
             <div className="w-12 h-12 rounded-xl bg-primary-100 dark:bg-primary-900/30 flex items-center justify-center flex-shrink-0">
-              {notificationStatus === 'granted' ? (
+              {pushActive ? (
                 <BellRing className="w-6 h-6 text-primary-600 dark:text-primary-400" />
               ) : (
                 <Bell className="w-6 h-6 text-primary-600 dark:text-primary-400" />
@@ -88,25 +168,41 @@ export function AlertPage() {
             </div>
             <div className="flex-1">
               <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
-                Push Notification {notificationStatus === 'granted' ? 'Aktif' : 'Belum Aktif'}
+                Push Notification {pushActive ? 'Aktif' : 'Belum Aktif'}
               </h3>
               <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
-                {notificationStatus === 'granted'
+                {pushActive
                   ? 'Anda akan menerima notifikasi otomatis saat gempa baru terdeteksi.'
-                  : 'Aktifkan notifikasi untuk menerima peringatan gempa secara real-time.'}
+                  : 'Aktifkan notifikasi untuk menerima peringatan gempa, bahkan saat aplikasi tertutup.'}
               </p>
-              {notificationStatus !== 'granted' && (
+              <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                Catatan: di iOS, aktifkan setelah memasang aplikasi ini ke layar utama.
+              </p>
+              {!pushActive && notificationStatus !== 'denied' && (
                 <button
-                  onClick={requestNotificationPermission}
-                  className="btn-primary mt-3 text-sm"
+                  onClick={enableNotifications}
+                  disabled={pushBusy}
+                  className="btn-primary mt-3 text-sm disabled:opacity-50"
                 >
-                  Aktifkan Notifikasi
+                  {pushBusy ? 'Mengaktifkan...' : 'Aktifkan Notifikasi'}
+                </button>
+              )}
+              {pushActive && (
+                <button
+                  onClick={unsubscribePush}
+                  disabled={pushBusy}
+                  className="btn-secondary mt-3 text-sm disabled:opacity-50"
+                >
+                  {pushBusy ? 'Menonaktifkan...' : 'Matikan Notifikasi'}
                 </button>
               )}
               {notificationStatus === 'denied' && (
                 <p className="text-xs text-red-500 dark:text-red-400 mt-2">
                   Notifikasi diblokir oleh browser. Aktifkan melalui pengaturan browser.
                 </p>
+              )}
+              {pushError && (
+                <p className="text-xs text-red-500 dark:text-red-400 mt-2">{pushError}</p>
               )}
             </div>
           </div>

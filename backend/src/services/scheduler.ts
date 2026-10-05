@@ -1,6 +1,6 @@
 import { supabaseDelete } from '../utils/prisma.js';
 import { fetchBMKGEvents, fetchUSGSEvents } from './earthquakeProvider.js';
-import { checkAndNotifyUsers } from './notification.js';
+import { notifyEarthquake } from './notification.js';
 
 const logger = {
   debug: (msg: string) => console.debug(`[DEBUG] ${msg}`),
@@ -15,23 +15,21 @@ export interface SyncResult {
 
 /**
  * One polling cycle: fetch BMKG + USGS feeds, persist new events, push
- * notifications to matching users. Invoked by the 5-minute Cron Trigger and
- * by POST /api/earthquakes/sync.
+ * notifications to matching subscribers. Invoked by the 5-minute Cron Trigger
+ * and by POST /api/earthquakes/sync.
  */
 export async function runEarthquakeSync(): Promise<SyncResult> {
-  const [bmkgCount, usgsCount] = await Promise.all([
-    fetchBMKGEvents(),
-    fetchUSGSEvents(),
-  ]);
+  const [bmkg, usgs] = await Promise.all([fetchBMKGEvents(), fetchUSGSEvents()]);
 
-  const totalNew = bmkgCount + usgsCount;
+  const newEvents = [...bmkg.events, ...usgs.events];
+  const totalNew = bmkg.count + usgs.count;
 
-  if (totalNew > 0) {
-    logger.info({ bmkgCount, usgsCount }, 'New earthquakes detected');
-    await checkAndNotifyUsers();
+  if (newEvents.length > 0) {
+    logger.info({ bmkg: bmkg.count, usgs: usgs.count }, 'New earthquakes detected');
+    await notifyEarthquake(newEvents);
   }
 
-  return { bmkg: bmkgCount, usgs: usgsCount, totalNew };
+  return { bmkg: bmkg.count, usgs: usgs.count, totalNew };
 }
 
 /**

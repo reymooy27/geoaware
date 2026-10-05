@@ -163,6 +163,30 @@ self.addEventListener('notificationclick', (event) => {
   );
 });
 
+// ─── Push Subscription Rotated ─────────────────────────────────
+// Push services rotate endpoints; without re-registering, pushes silently stop.
+
+self.addEventListener('pushsubscriptionchange', (event) => {
+  event.waitUntil((async () => {
+    try {
+      const res = await fetch('/api/alerts/push/public-key');
+      const { key } = await res.json();
+      if (!key) return;
+      const sub = await self.registration.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: key,
+      });
+      await fetch('/api/alerts/push/subscribe', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ endpoint: sub.endpoint, keys: sub.toJSON().keys }),
+      });
+    } catch {
+      // Re-rotated later or offline; nothing actionable here.
+    }
+  })());
+});
+
 // ─── Offline Region Download ───────────────────────────────────
 
 self.addEventListener('message', (event) => {

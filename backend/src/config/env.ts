@@ -27,6 +27,10 @@ export interface Bindings {
   FIREBASE_CLIENT_EMAIL?: string;
   FIREBASE_PRIVATE_KEY?: string;
 
+  VAPID_PUBLIC_KEY?: string;
+  VAPID_PRIVATE_KEY?: string;
+  VAPID_SUBJECT?: string;
+
   TWILIO_ACCOUNT_SID?: string;
   TWILIO_AUTH_TOKEN?: string;
   TWILIO_PHONE_NUMBER?: string;
@@ -58,6 +62,10 @@ export interface AppConfig {
   FIREBASE_PROJECT_ID: string;
   FIREBASE_CLIENT_EMAIL: string;
   FIREBASE_PRIVATE_KEY: string;
+
+  VAPID_PUBLIC_KEY: string;
+  VAPID_PRIVATE_KEY: string;
+  VAPID_SUBJECT: string;
 
   TWILIO_ACCOUNT_SID: string;
   TWILIO_AUTH_TOKEN: string;
@@ -112,6 +120,10 @@ export function initEnv(bindings: Bindings): AppConfig {
     FIREBASE_CLIENT_EMAIL: bindings.FIREBASE_CLIENT_EMAIL ?? '',
     FIREBASE_PRIVATE_KEY:
       bindings.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n') ?? '',
+
+    VAPID_PUBLIC_KEY: bindings.VAPID_PUBLIC_KEY ?? '',
+    VAPID_PRIVATE_KEY: bindings.VAPID_PRIVATE_KEY ?? '',
+    VAPID_SUBJECT: bindings.VAPID_SUBJECT ?? 'mailto:admin@geoaware.local',
 
     TWILIO_ACCOUNT_SID: bindings.TWILIO_ACCOUNT_SID ?? '',
     TWILIO_AUTH_TOKEN: bindings.TWILIO_AUTH_TOKEN ?? '',

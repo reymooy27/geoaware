@@ -123,8 +123,8 @@ earthquakeRoutes.get('/latest', async (c) => {
 });
 
 earthquakeRoutes.post('/sync', async (c) => {
-  const [bmkgCount, usgsCount] = await Promise.all([fetchBMKGEvents(), fetchUSGSEvents()]);
-  return c.json({ synced: { bmkg: bmkgCount, usgs: usgsCount } });
+  const [bmkg, usgs] = await Promise.all([fetchBMKGEvents(), fetchUSGSEvents()]);
+  return c.json({ synced: { bmkg: bmkg.count, usgs: usgs.count } });
 });
 
 earthquakeRoutes.get('/stats', async (c) => {

@@ -2,9 +2,11 @@ import { Hono } from 'hono';
 import { z } from 'zod';
 import { prisma } from '../utils/prisma.js';
 import type { Env } from '../config/env.js';
+import { getEnv } from '../config/env.js';
 import { AppError } from '../middleware/errorHandler.js';
 import { readJson } from '../utils/http.js';
 import { sendPushNotification } from '../services/notification.js';
+import { saveSubscription, removeSubscription, notifySubscribers } from '../services/webpush.js';
 import { sendSMS } from '../services/sms.js';
 import { sendWhatsApp } from '../services/whatsapp.js';
 
@@ -182,4 +184,45 @@ alertRoutes.post('/test/:userId', async (c) => {
   }
 
   return c.json({ success: true });
+});
+
+const subscribeSchema = z.object({
+  endpoint: z.string().max(2048).refine((e) => e.startsWith('https://'), {
+    message: 'Push endpoint must be https',
+  }),
+  keys: z.object({
+    p256dh: z.string().min(10).max(256),
+    auth: z.string().min(5).max(64),
+  }),
+  minMagnitude: z.number().min(3).max(10).default(3.0),
+});
+
+alertRoutes.get('/push/public-key', (c) =>
+  c.json({ key: getEnv().VAPID_PUBLIC_KEY || null })
+);
+
+alertRoutes.post('/push/subscribe', async (c) => {
+  const data = subscribeSchema.parse(await readJson(c));
+  await saveSubscription(data.endpoint, data.keys, data.minMagnitude);
+  return c.json({ ok: true }, 201);
+});
+
+alertRoutes.post('/push/unsubscribe', async (c) => {
+  const { endpoint } = z.object({ endpoint: z.string().min(10).max(2048) }).parse(await readJson(c));
+  await removeSubscription(endpoint);
+  return c.body(null, 204);
+});
+
+alertRoutes.post('/push/test', async (c) => {
+  await notifySubscribers([
+    {
+      id: `test-${Date.now()}`,
+      magnitude: 5.5,
+      depth: 10,
+      place: '(pesan uji coba notifikasi)',
+      time: new Date().toISOString(),
+      source: 'TEST',
+    },
+  ]);
+  return c.json({ ok: true });
 });

@@ -67,6 +67,18 @@ model EmergencyContact {
   @@map("emergency_contacts")
 }
 
+// Web Push subscriptions (anonymous, per browser device — no user account needed).
+model PushSubscription {
+  id           String   @id @default(uuid())
+  endpoint     String   @unique
+  p256dh       String
+  auth         String
+  minMagnitude Float    @default(3.0)
+  createdAt    DateTime @default(now())
+
+  @@map("push_subscriptions")
+}
+
 model FaultLine {
   id              String   @id @default(cuid())
   name            String
