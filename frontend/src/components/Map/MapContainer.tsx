@@ -229,51 +229,12 @@ export function MapContainer({
       m.addSource("earthquakes", {
         type: "geojson",
         data: geojson,
-        cluster: true,
-        clusterMaxZoom: 14,
-        clusterRadius: 50,
-      });
-
-      m.addLayer({
-        id: "earthquakes-cluster",
-        type: "circle",
-        source: "earthquakes",
-        filter: ["has", "point_count"],
-        paint: {
-          "circle-color": [
-            "step",
-            ["get", "point_count"],
-            "#f97316",
-            10,
-            "#ef4444",
-            50,
-            "#dc2626",
-          ],
-          "circle-radius": ["step", ["get", "point_count"], 20, 10, 30, 50, 40],
-          "circle-opacity": 0.8,
-        },
-      });
-
-      m.addLayer({
-        id: "earthquakes-cluster-count",
-        type: "symbol",
-        source: "earthquakes",
-        filter: ["has", "point_count"],
-        layout: {
-          "text-field": "{point_count_abbreviated}",
-          "text-font": ["DIN Offc Pro Medium", "Arial Unicode MS Bold"],
-          "text-size": 12,
-        },
-        paint: {
-          "text-color": "#ffffff",
-        },
       });
 
       m.addLayer({
         id: "earthquakes",
         type: "circle",
         source: "earthquakes",
-        filter: ["!", ["has", "point_count"]],
         paint: {
           "circle-radius": [
             "interpolate",
@@ -315,29 +276,10 @@ export function MapContainer({
         }
       });
 
-      m.on("click", "earthquakes-cluster", (e) => {
-        const features = m.queryRenderedFeatures(e.point, {
-          layers: ["earthquakes-cluster"],
-        });
-        if (features[0]) {
-          const clusterId = features[0].properties?.cluster_id;
-          const source = m.getSource("earthquakes") as mapboxgl.GeoJSONSource;
-          source.getClusterExpansionZoom(clusterId, (err, zoom) => {
-            if (!err && zoom) m.easeTo({ center: e.lngLat, zoom: zoom });
-          });
-        }
-      });
-
       m.on("mouseenter", "earthquakes", () => {
         m.getCanvas().style.cursor = "pointer";
       });
-      m.on("mouseenter", "earthquakes-cluster", () => {
-        m.getCanvas().style.cursor = "pointer";
-      });
       m.on("mouseleave", "earthquakes", () => {
-        m.getCanvas().style.cursor = "";
-      });
-      m.on("mouseleave", "earthquakes-cluster", () => {
         m.getCanvas().style.cursor = "";
       });
     } catch (error) {
@@ -394,8 +336,6 @@ export function MapContainer({
       if (showEarthquakes) {
         await addEarthquakeLayer(m, filters);
       } else {
-        removeLayer(m, "earthquakes-cluster");
-        removeLayer(m, "earthquakes-cluster-count");
         removeLayer(m, "earthquakes");
         removeSourceSafe(m, "earthquakes");
       }
