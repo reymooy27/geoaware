@@ -102,7 +102,7 @@ async function staleWhileRevalidate(request) {
 self.addEventListener('push', (event) => {
   let data = {
     title: '⚠️ Gempa Terdeteksi',
-    body: 'Ada gempa baru di dekat Anda',
+    body: 'Cek lokasi & magnitudo di GeoAware',
     icon: '/favicon.svg',
     badge: '/favicon.svg',
     tag: 'earthquake',

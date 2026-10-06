@@ -260,9 +260,10 @@ export async function notifySubscribers(events: NewEvent[]): Promise<void> {
     const targets = subs.filter((s) => event.magnitude >= s.minMagnitude);
     if (targets.length === 0) continue;
 
+    const jamWib = new Date(event.time).toLocaleTimeString('id-ID', { timeZone: 'Asia/Jakarta', hour: '2-digit', minute: '2-digit' });
     const payload = {
-      title: `⚠️ Gempa M ${event.magnitude.toFixed(1)}`,
-      body: `${event.place} — kedalaman ${event.depth} km (${event.source})`,
+      title: `⚠️ Gempa M${event.magnitude.toFixed(1)} — ${event.place}`,
+      body: `Kedalaman ${event.depth} km · ${jamWib} WIB · sumber ${event.source}`,
       tag: `quake-${event.id}`,
       requireInteraction: event.magnitude >= 5,
       data: { url: '/alerts', eventId: event.id },
