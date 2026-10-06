@@ -260,7 +260,7 @@ export async function notifySubscribers(events: NewEvent[]): Promise<void> {
     const targets = subs.filter((s) => event.magnitude >= s.minMagnitude);
     if (targets.length === 0) continue;
 
-    const jamWib = new Date(event.time).toLocaleTimeString('id-ID', { timeZone: 'Asia/Jakarta', hour: '2-digit', minute: '2-digit' });
+    const jamWib = new Date(event.time).toLocaleTimeString('en-GB', { timeZone: 'Asia/Jakarta', hour: '2-digit', minute: '2-digit' });
     const payload = {
       title: `⚠️ Gempa M${event.magnitude.toFixed(1)} — ${event.place}`,
       body: `Kedalaman ${event.depth} km · ${jamWib} WIB · sumber ${event.source}`,
