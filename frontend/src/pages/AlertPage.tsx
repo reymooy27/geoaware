@@ -63,7 +63,10 @@ export function AlertPage() {
       if (!save.ok) throw new Error('Gagal menyimpan subscription ke server');
       setSubscribed(true);
     } catch (e) {
-      setPushError(e instanceof Error ? e.message : 'Gagal mengaktifkan push');
+      const msg = e instanceof Error ? e.message : '';
+      setPushError(/registration failed/i.test(msg)
+        ? 'Browser menolak registrasi push (umum terjadi di Brave / Chromium non-resmi di Linux). Coba buka di Firefox atau Chrome resmi.'
+        : msg || 'Gagal mengaktifkan push');
     } finally {
       setPushBusy(false);
     }
